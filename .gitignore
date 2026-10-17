@@ -1,0 +1,37 @@
+# Dependency installation / build / Electron packages
+node_modules/
+dist/
+build/
+out/
+.cache/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Runtime user data and generated indexes must never be committed
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+user-data/
+workspaces/
+imports/
+
+# Local secrets and OS/editor artifacts
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Electron Forge / installers
+make/
+release/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
