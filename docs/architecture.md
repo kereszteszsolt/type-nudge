@@ -1,0 +1,55 @@
+# Architecture — Release 0.1
+
+**Implemented in TND-001:** Electron main/preload/renderer separation, one plain-text CodeMirror window, display branding, and two IPC operations: `app:info` (no arguments) and `app:open-link` (one allowlisted branding link ID). IPC validates the window, main frame, exact entry URL, argument count and type. At that stage, neither text nor filesystem operations crossed the bridge.
+
+**Added in TND-002:** main-process SQLite and explicit TXT/MD import, with `sources:list` / `sources:import` taking no arguments and `sources:reindex` / `sources:delete` taking one UUID. The OS dialog supplies paths directly to the main process. Only bounded metadata and operation results reach the renderer. A shared sender validator protects all six calls. Import mutations are serialized; each source's content, hash, revision and counts are replaced transactionally. Source copies persist independently of the session-only editor.
+
+**Added in TND-003:** a main-process `PredictionEngine` consumes explicit prefix, up to two completed context words, source IDs and enabled N sizes. `SourceStore.predictionRepository()` provides read-only, indexed queries on its existing connection. Revision/source-state reads and candidate queries share one SQLite read transaction. The engine returns up to three frequency-ranked words from the first matching enabled order and keeps a bounded LRU. Indexing and prediction share normalization.
+
+**Added in TND-004:** the renderer requests suggestions through `prediction:query` with only `{prefix, context}`. Main validates bounded words and the trusted sender, resolves active source IDs and N from persisted preferences, and invokes the existing engine. `prediction:settings` takes no arguments; `prediction:configure` accepts exactly source mode and a nonempty N subset. `sources:enable` accepts one imported-source UUID and boolean. No arbitrary settings, SQL, paths or document bodies cross these calls. CodeMirror shows a decorative suffix widget with conditional Tab/Alt+Down/Esc; a renderer generation/debounce gate rejects stale replies. Source activation and preferences use schema version 1. Pure word normalization/types live under `src/shared/` for both renderer and main.
+
+**Added in TND-005:** schema version 2 adds `personal_documents` without altering imported rows or counts. Main-process `PersonalStore` persists explicitly saved documents, consent, per-note activation and learned contributions. Eight `documents:*` calls list summaries, open one bounded body, save one exact `{id, revision, name, text}` object, delete, toggle consent, toggle a note, forget one contribution or reset personal learned data. IDs are opaque UUIDs, revisions reject stale overwrites, and no paths/SQL are accepted. `predictionSourceIds` additionally gates all personal sources on persisted consent. The renderer holds unsaved text and save snapshots locally; switching documents resets undo/ghost state, late opens cannot overwrite intervening edits, and close uses a discard guard. No per-keystroke persistence or learning occurs.
+
+TypeNudge is **one Electron desktop app**, not a browser-hosted web application. The **renderer** hosts CodeMirror 6, ghost-text decorations and settings. A **small preload bridge** exposes narrowly scoped IPC operations. The **main process** owns local imports, document persistence and SQLite queries, calling a pure prediction module where possible.
+
+Original TND-001–006 service flow (the N-gram services now run in the local worker described below):
+
+```mermaid
+flowchart LR
+    CM[Renderer: CodeMirror editor and settings] -->|Typed IPC| PL[Preload API]
+    PL -->|Validated request| Main[Electron main process]
+    Main -->|Index / predict / manage| Core[N-gram services]
+    Core <--> DB[(SQLite in userData)]
+    Main -->|Explicit file picker| Files[TXT / Markdown files]
+    Core -->|Up to 3 candidates| Main
+    Main -->|Typed IPC result| CM
+```
+
+## TND-007 runtime
+
+TND-007 replaces the historical N-subset/backoff/top-three interface above with maximum N=1–7, mandatory lower orders, both top-X cutoffs, score-weighted sampling and up to ten virtual-context words. Main validates `{prefix,context,avoidWord?}` and exact six-field settings, including seven validated 0–250× virtual multipliers. It delegates named operations to `StorageClient`; `storage-worker.js` owns the only SQLite connection and serializes all imported/personal operations and prediction sequences. Source mode/consent are resolved there, with one read snapshot per sequence. Main maintains a 32-waiter bound, coalesces obsolete queued predictions and serves numeric progress without waiting behind an index operation.
+
+Schema 4 preserves older counts and exposes index coverage; explicit retained-copy reindex or consented Save upgrades legacy contributions. Tokenization flushes bounded batches instead of a full-corpus Map. Source/body/count/revision replacements remain atomic. A worker failure fails pending requests safely; restart uses SQLite recovery. This is an in-app local thread, without a server or new external service.
+
+The renderer has hidden Settings and keyboard Help dialogs, a contiguous maximum-N slider, seven synchronized multiplier slider/number pairs, measured DB/WAL/SHM size with manual refresh, and stable multi-word ghost state. Tab/Alt+Right/Alt+Enter accept one/K/all words in isolated undo steps; Alt+Down requests an alternative and Esc dismisses. Source/settings changes and ordinary edits invalidate stale continuations. See [pool mechanics](prediction-pool.md) and [storage](indexing-and-storage.md).
+
+## Responsibilities
+
+- **UI renderer:** document editing, source/N choices, currently visible suggestions, accessibility, and explicit save/import actions. No direct SQLite/file system/Node APIs.
+- **Preload:** the minimum message bridge. It is not an unrestricted shell, SQL client, or filesystem adapter.
+- **Main services:** trusted IPC dispatch, OS picker, bounded worker queue/lifetime and progress. **Local storage worker:** selected-file reading, SQLite lifetime, transactions, indexing and bounded prediction sequences.
+- **Indexer:** Unicode-aware tokenization and immutable document revision inputs; per-source N-gram counts with atomic reindexing.
+- **Prediction engine:** consumes eligible sources, maximum N, X, context/prefix and preview count; virtually scales and combines per-N pools and samples sequential continuations.
+- **SQLite:** local persistent store under Electron `userData`; not in the repository, user-selected import directory, installation directory, or generated build output.
+
+## Data boundaries
+
+The application **never reads other applications' typing**, monitors global hotkeys or sends source text to a model endpoint. External author/project/support links are optional and require an explicit click, opening in the user's default browser. The application itself does not need any network connection for predictions.
+
+Model the UI as a single window; no multi-user account, server sync or cloud features. See [Privacy and security](security-and-privacy.md).
+
+## Build and platform notes
+
+Electron, CodeMirror 6, Vite and Electron Forge are pinned by `TND-001`. The sandboxed preload is bundled into a single CommonJS file. Production renderer requests are restricted to its bundled directory; development permits only the selected loopback Vite/HMR port. Navigation, popups, webviews, downloads and permissions are denied. The renderer CSP uses a nonce for CodeMirror/Vite style elements, with no inline script or eval permission.
+
+`better-sqlite3` 13.0.3 is an external main-process dependency with shipped Node-API binaries. npm's `allowScripts` policy denies its unnecessary install build and Forge's `rebuildConfig.ignoreModules` skips only this module's rebuild. Revisit both when changing the dependency or targeting a platform without a compatible prebuild. The Forge copy filter retains `.vite/` and `better-sqlite3`/`node-addon-api`; the auto-unpack-natives plugin places native files outside ASAR. Loading the native module and real SQLite operations must be verified in the specific packaged runtime. `TND-006` verifies Linux x64/WSLg and native Windows x64 app directories, native SQLite and license files, and records other native platforms/installers/signing as `Not run`. A small GitHub Actions workflow checks Node typecheck/unit/SQLite cases; hosted execution is separately unverified.

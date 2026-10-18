@@ -1,0 +1,143 @@
+<!-- SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu> -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'nonce-typenudge-style'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">
+    <meta property="csp-nonce" nonce="typenudge-style">
+    <title>TypeNudge</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="identity"><span class="app-mark" aria-hidden="true">T<span>n</span></span><h1 id="app-name">TypeNudge</h1></div>
+        <div class="header-actions"><button id="documents-button" type="button">Documents</button><button id="sources-button" type="button">Sources</button><button id="settings-button" type="button" aria-haspopup="dialog">Settings</button><button id="help-button" type="button" aria-label="Help and shortcuts" aria-haspopup="dialog">?</button><button id="about-button" type="button" disabled>About</button></div>
+      </header>
+      <main>
+        <div class="document-heading"><h2 id="document-title">Untitled</h2><span>Plain text</span></div>
+        <div class="document-actions"><label for="document-name">Name</label><input id="document-name" value="Untitled" maxlength="120" autocomplete="off">
+          <button id="new-document" type="button">New</button><button id="save-document" type="button">Save</button></div>
+        <p id="document-error" role="alert" hidden></p>
+        <p id="prediction-status" role="status">Loading local suggestions…</p>
+        <div id="editor" aria-describedby="session-note"></div>
+      </main>
+      <footer class="status-bar">
+        <span id="session-note" role="status">New document · Use Save to keep your text.</span>
+      </footer>
+    </div>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <h2 id="settings-title" tabindex="-1" autofocus>Prediction settings</h2>
+      <div class="storage-summary">
+        <p id="storage-usage" class="source-note" role="status">Database size loads when Settings opens.</p>
+        <button id="refresh-storage" type="button">Refresh size</button>
+      </div>
+      <div class="prediction-controls">
+        <section class="prediction-options" aria-label="Prediction options">
+          <label for="prediction-source">Predict from</label>
+          <select id="prediction-source" disabled><option value="imported">Imported Texts</option><option value="personal">My Writing</option><option value="combined">Combined</option></select>
+          <label for="maximum-n">Maximum N <output id="maximum-n-value" for="maximum-n">N=1–3</output></label>
+          <input id="maximum-n" type="range" min="1" max="7" step="1" value="3" disabled>
+          <p class="source-note">All smaller orders are included. N=7 uses up to six previous words. Reindex older sources to add N=4–7.</p>
+          <label for="pool-size">Candidate pool size X</label><input id="pool-size" type="number" min="1" max="100" step="1" value="10" disabled>
+          <p class="source-note">Top X per N from your combined sources, then top X again after adding scaled word scores. Selection is weighted by that final score.</p>
+          <label for="preview-words">Preview words</label><input id="preview-words" type="number" min="1" max="10" step="1" value="3" disabled>
+          <label for="accept-words">Words with Alt+Right</label><input id="accept-words" type="number" min="1" max="3" step="1" value="2" disabled>
+        </section>
+        <fieldset class="ngram-scales">
+          <legend>N-gram multipliers</legend>
+          <p class="source-note">0–250×, default 1×. Adjust the slider or type a number. 0× removes that order’s contribution. Only virtual pool scores change; stored counts stay the same. Orders above Maximum N apply when you raise it.</p>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-1">N=1</label>
+            <input id="ngram-scale-1" type="range" min="0" max="250" step="1" value="1" aria-label="N=1 multiplier" disabled>
+            <input id="ngram-scale-value-1" type="number" min="0" max="250" step="1" value="1" required aria-label="N=1 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-2">N=2</label>
+            <input id="ngram-scale-2" type="range" min="0" max="250" step="1" value="1" aria-label="N=2 multiplier" disabled>
+            <input id="ngram-scale-value-2" type="number" min="0" max="250" step="1" value="1" required aria-label="N=2 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-3">N=3</label>
+            <input id="ngram-scale-3" type="range" min="0" max="250" step="1" value="1" aria-label="N=3 multiplier" disabled>
+            <input id="ngram-scale-value-3" type="number" min="0" max="250" step="1" value="1" required aria-label="N=3 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-4">N=4</label>
+            <input id="ngram-scale-4" type="range" min="0" max="250" step="1" value="1" aria-label="N=4 multiplier" disabled>
+            <input id="ngram-scale-value-4" type="number" min="0" max="250" step="1" value="1" required aria-label="N=4 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-5">N=5</label>
+            <input id="ngram-scale-5" type="range" min="0" max="250" step="1" value="1" aria-label="N=5 multiplier" disabled>
+            <input id="ngram-scale-value-5" type="number" min="0" max="250" step="1" value="1" required aria-label="N=5 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-6">N=6</label>
+            <input id="ngram-scale-6" type="range" min="0" max="250" step="1" value="1" aria-label="N=6 multiplier" disabled>
+            <input id="ngram-scale-value-6" type="number" min="0" max="250" step="1" value="1" required aria-label="N=6 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+          <div class="ngram-scale-row">
+            <label for="ngram-scale-7">N=7</label>
+            <input id="ngram-scale-7" type="range" min="0" max="250" step="1" value="1" aria-label="N=7 multiplier" disabled>
+            <input id="ngram-scale-value-7" type="number" min="0" max="250" step="1" value="1" required aria-label="N=7 multiplier value" disabled><span aria-hidden="true">×</span>
+          </div>
+        </fieldset>
+      </div>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <dialog id="help-dialog" aria-labelledby="help-title">
+      <h2 id="help-title" tabindex="-1" autofocus>Writing help</h2>
+      <dl class="shortcut-list">
+        <dt>Tab</dt><dd>Accept the next suggested word.</dd>
+        <dt>Alt + Down</dt><dd>Request another suggestion.</dd>
+        <dt>Alt + Right</dt><dd>Accept the number of words chosen in Settings.</dd>
+        <dt>Alt + Enter</dt><dd>Accept the whole displayed suggestion.</dd>
+        <dt>Esc</dt><dd>Dismiss a suggestion or close a panel.</dd>
+        <dt>Ctrl/Cmd + S</dt><dd>Save your document on this device.</dd>
+      </dl>
+      <p>Suggestion shortcuts apply only in the focused editor while a suggestion is available. Every acceptance is one undo step. Unaccepted words are not saved or learned.</p>
+      <p>In Settings choose Imported Texts, My Writing or Combined. Sources → Use selects the files to combine. My Writing contributes only with learning consent and an explicit Save.</p>
+      <p>Maximum N includes every smaller order. Each usable N nominates its top X words after source counts are added; each admitted count is multiplied by its N-gram setting (0–250×), equal words have these virtual scores summed, and the final top X is sampled by score. Zero-weight orders do not contribute; if all usable orders have zero weight, no suggestion is shown. Stored counts never change when adjusting a multiplier. Later preview words use earlier suggested words as virtual context.</p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <dialog id="documents-dialog" aria-labelledby="documents-title">
+      <h2 id="documents-title">Your documents</h2>
+      <p>Saved text stays on this device. Only Save (Ctrl/Cmd+S) persists your current document.</p>
+      <label class="learning-label"><input id="personal-learning" type="checkbox"> Learn from my writing</label>
+      <p class="source-note">Off by default. When on, Save replaces that document’s learned counts. Turning off pauses personal predictions; saving while off removes that document’s previous learned counts. Enabling does not index existing notes automatically.</p>
+      <button id="reset-learning" type="button">Reset personal learned data</button>
+      <p id="documents-status" role="status"></p><p id="documents-empty">No saved documents yet.</p>
+      <ul id="documents-list" aria-label="Saved documents"></ul>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Confirm action</h2><p id="confirm-message"></p>
+      <form method="dialog"><button value="cancel" autofocus>Keep editing</button> <button id="confirm-action" value="confirm">Confirm</button></form>
+    </dialog>
+    <dialog id="sources-dialog" aria-labelledby="sources-title">
+      <h2 id="sources-title">Text sources</h2>
+      <p id="import-limits">Import UTF-8 TXT or Markdown files.</p>
+      <p class="source-note">Local copies stay on this device. Choose which files contribute to predictions. Reimport a changed file to replace its counts, or reindex its stored copy.</p>
+      <button id="import-button" type="button">Import TXT / MD</button>
+      <button id="refresh-sources" type="button">Check files</button>
+      <p id="sources-status" role="status" aria-live="polite"></p>
+      <p id="sources-empty">No sources yet. Choose text files to build your local index.</p>
+      <ul id="sources-list" aria-label="Imported sources"></ul>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <dialog id="about-dialog" aria-labelledby="about-title">
+      <h2 id="about-title">About TypeNudge</h2>
+      <p id="app-version"></p>
+      <p>A quiet space for plain-text writing. Works offline.</p>
+      <p id="app-author"></p>
+      <p id="app-license"></p>
+      <nav id="about-links" aria-label="Project and support links"></nav>
+      <p id="link-error" role="status"></p>
+      <form method="dialog"><button autofocus>Close</button></form>
+    </dialog>
+    <p id="startup-error" role="alert" hidden>TypeNudge could not start. Close this window and try again.</p>
+    <script type="module" src="/src/renderer/index.ts"></script>
+  </body>
+</html>
