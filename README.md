@@ -7,11 +7,13 @@
 ![Electron](https://img.shields.io/badge/Electron-44.9.0-47848F?style=flat-square)
 ![Offline](https://img.shields.io/badge/offline-by%20design-244936?style=flat-square)
 
-**TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. The TND-001 foundation provides a plain-text CodeMirror editor. Later stories will suggest word completions and likely next words as subtle **ghost text** inside its own editor. Suggestions will come from a lightweight, local **unigram/bigram/trigram** model learned from text files and optionally from saved writing — **not** from an LLM or cloud API.
+**TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. Its plain-text CodeMirror editor suggests word completions and likely next words as subtle **ghost text**. Suggestions come from a lightweight, local **unigram/bigram/trigram** model indexed from imported text files. Optional learning from saved writing remains planned; no LLM or cloud API is used.
 
-> **Repository status: TND-001–003 implemented; Release 0.1 is in progress.** Available: the desktop editor, local text-source management and a main-process N=1/2/3 prediction module with Unicode prefix matching, source filtering and a bounded cache. **Predictions are not connected to the editor yet; ghost text/settings are TND-004 work. Editor text is session-only and is discarded when the window closes.** Imported source copies and counts persist locally. Document saving and learning remain planned. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001–004 implemented; Release 0.1 is in progress.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions with Unicode prefix matching, source filtering and a bounded cache, plus persisted source/N preferences. **Editor text is session-only and is discarded when the window closes.** Imported source copies and counts persist locally. Document saving and learning remain planned. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
-Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text. The controls for source activation and visible suggestions arrive in TND-004.
+Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text.
+
+Choose **Imported Texts**, **My Writing** or **Combined** above the editor and any nonempty set of N=1/2/3. **Tab** accepts the missing suffix, **Alt+Down** cycles up to three candidates, and **Esc** dismisses. Without a suggestion, Tab moves focus normally. **My Writing** currently explains that no personal learned text is available; saving and opt-in learning arrive in TND-005. Settings and source activation persist across restarts.
 
 ## Planned Release 0.1 — Offline Predictive Writing MVP
 
@@ -125,8 +127,8 @@ Desktop tests require a working graphical session and use temporary user data. T
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001–003 editor/index/prediction core; ghost text/settings, learning and release delivery remain planned |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–003 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001–004 editor/index/inline suggestions/settings; learning and release delivery remain planned |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–004 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For GitHub metadata to apply **when the MVP is implemented**, see [About & Topics](docs/github-metadata.md).

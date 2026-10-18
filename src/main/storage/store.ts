@@ -8,6 +8,7 @@ import { SourceError } from './errors';
 import { countNgrams } from './tokenize';
 import { SqlitePredictionRepository } from '../prediction/sqlite-repository';
 import type { PredictionRepository } from '../prediction/types';
+import { validatePredictionSettings, type PredictionSettings, type SourceMode } from '../../shared/prediction';
 
 interface SourceRow {
   id: string; name: string; enabled: number; revision: number;
@@ -79,6 +80,37 @@ export class SourceStore {
 
   predictionRepository(): PredictionRepository {
     return new SqlitePredictionRepository(this.db);
+  }
+
+  getPredictionSettings(): PredictionSettings {
+    const rows = this.db.prepare("SELECT key, value FROM settings WHERE key IN ('sourceMode', 'enabledN')").all() as { key: string; value: string }[];
+    return validatePredictionSettings(Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)])));
+  }
+
+  setPredictionSettings(input: PredictionSettings): PredictionSettings {
+    const settings = validatePredictionSettings(input);
+    this.db.transaction(() => {
+      const update = this.db.prepare('UPDATE settings SET value = ? WHERE key = ?');
+      update.run(JSON.stringify(settings.sourceMode), 'sourceMode');
+      update.run(JSON.stringify(settings.enabledN), 'enabledN');
+    })();
+    return settings;
+  }
+
+  predictionSourceIds(mode: SourceMode): string[] {
+    return (this.db.prepare(`SELECT id FROM sources WHERE enabled = 1 AND
+      (? = 'combined' OR kind = ?) ORDER BY id LIMIT ?`).all(mode, mode, importLimits.sources) as { id: string }[]).map((row) => row.id);
+  }
+
+  setEnabled(id: string, enabled: boolean): SourceSummary {
+    return this.db.transaction(() => {
+      const previous = this.summary(id);
+      if (previous.enabled !== enabled) {
+        this.db.prepare("UPDATE sources SET enabled = ? WHERE id = ? AND kind = 'imported'").run(Number(enabled), id);
+        this.advanceRevision();
+      }
+      return this.summary(id);
+    })();
   }
 
   private summary(id: string): SourceSummary {

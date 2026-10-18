@@ -2,7 +2,7 @@
 
 TypeNudge uses **word-based** N-grams, not a large language model. It predicts at most one **word completion or next word** at a time, with up to three ranked alternatives. It is intended for general plain text, not solely source code.
 
-**TND-003 implements the main-process module.** `PredictionEngine` and its SQLite repository are tested independently of Electron UI. They are not yet connected to typing, IPC, ghost text or source/settings controls; that integration belongs to TND-004.
+**TND-003 implements the main-process module.** `PredictionEngine` and its SQLite repository are tested independently of Electron UI. TND-004 connects them to typing through validated IPC, ghost text and persisted source/N controls; see [editor interactions](editor-interactions.md).
 
 ## Core interface
 
@@ -51,7 +51,7 @@ The importer and predictor now share `src/main/text/words.ts`: NFC, locale-indep
 
 ## Runtime and cache
 
-The current module is synchronous and main-process-only. The TND-004 preload/IPC/editor integration must make requests asynchronously and check request IDs/text/settings revisions before showing a result. The core already returns its index revision but does not monitor any keyboard or editor.
+The core remains synchronous and main-process-only. The TND-004 preload/IPC/editor integration invokes it asynchronously from the renderer and uses a generation gate before showing results. The main process supplies source IDs and enabled N from persisted settings; the renderer sends only bounded prefix/context words. The core returns its index revision and does not monitor any keyboard or editor.
 
 The repository reads the global index revision, at most 100 selected source records (ID/revision/hash/enabled), and any candidate rows in **one read transaction**. This prevents a mixed result if a separate connection updates source activation while a request is running. Candidate queries use equality on source, N and context plus a normalized prefix range. `CROSS JOIN` keeps selected sources outside the indexed N-gram lookup; the real SQLite query-plan test checks the primary-key range search. [SQLite documents this join-order control](https://www.sqlite.org/optoverview.html#manual_control_of_query_plans_using_cross_join).
 

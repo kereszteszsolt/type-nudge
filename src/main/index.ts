@@ -9,6 +9,7 @@ import { registerAppIpc } from './ipc';
 import { allowRequest, localDevEntry } from './security';
 import { registerSourcesIpc } from './sources-ipc';
 import { SourceStore } from './storage/store';
+import { registerPredictionIpc } from './prediction-ipc';
 
 app.setName(branding.appName);
 app.enableSandbox();
@@ -66,6 +67,7 @@ void app.whenReady().then(() => {
   session.defaultSession.on('will-download', (event) => event.preventDefault());
   registerAppIpc(() => window, entry, branding, app.getVersion());
   registerSourcesIpc(() => window, entry, getStore);
+  registerPredictionIpc(() => window, entry, getStore);
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     { label: 'File', submenu: [{ role: 'quit' }] },

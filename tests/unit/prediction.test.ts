@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PredictionEngine } from '../../src/main/prediction/engine';
 import { LruCache } from '../../src/main/prediction/lru';
 import { normalizePredictionRequest } from '../../src/main/prediction/request';
-import { normalizeWord, prefixUpperBound } from '../../src/main/text/words';
+import { normalizeWord, prefixUpperBound } from '../../src/shared/words';
 import type { NgramOrder, PredictionRepository, PredictionRequest, PredictionSnapshot } from '../../src/main/prediction/types';
 
 const a = '11111111-1111-4111-8111-111111111111';

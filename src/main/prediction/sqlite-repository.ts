@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type Database from 'better-sqlite3';
-import { prefixUpperBound } from '../text/words';
+import { prefixUpperBound } from '../../shared/words';
 import type { PredictionCandidate, PredictionRepository, PredictionSnapshot } from './types';
 
 interface SourceState { id: string; revision: number; content_hash: string; enabled: number }

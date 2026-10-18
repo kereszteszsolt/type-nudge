@@ -54,4 +54,13 @@ export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry:
       return result(() => mutate(() => action(getStore(), id)));
     });
   }
+  ipcMain.handle(sourceChannels.enable, (event, ...args: unknown[]) => {
+    assertTrustedSender(event, getWindow(), entry);
+    const [id, enabled] = args;
+    if (args.length !== 2 || typeof id !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) || typeof enabled !== 'boolean') {
+      throw new Error('A valid source ID and boolean enabled flag are required.');
+    }
+    return result(() => mutate(() => getStore().setEnabled(id, enabled)));
+  });
 }

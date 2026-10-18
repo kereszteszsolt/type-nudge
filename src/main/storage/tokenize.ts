@@ -3,7 +3,7 @@
 
 import { importLimits } from '../../shared/sources';
 import { SourceError } from './errors';
-import { normalizeWord } from '../text/words';
+import { normalizeWord } from '../../shared/words';
 
 export interface NgramCount {
   n: number;

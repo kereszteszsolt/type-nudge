@@ -3,7 +3,7 @@
 
 import type { SourceResult } from '../shared/sources';
 
-export function initializeSources(): void {
+export function initializeSources(onBusy: (busy: boolean) => void): void {
   const dialog = document.getElementById('sources-dialog') as HTMLDialogElement;
   const open = document.getElementById('sources-button') as HTMLButtonElement;
   const importButton = document.getElementById('import-button') as HTMLButtonElement;
@@ -29,6 +29,21 @@ export function initializeSources(): void {
       description.append(name, details);
       const actions = document.createElement('div');
       actions.className = 'source-actions';
+      const label = document.createElement('label');
+      const enabled = document.createElement('input');
+      enabled.type = 'checkbox';
+      enabled.checked = source.enabled;
+      enabled.disabled = busy;
+      enabled.setAttribute('aria-label', `Use ${source.name} for predictions`);
+      enabled.addEventListener('change', () => {
+        void run(async () => {
+          try { unwrap(await window.typeNudge.setSourceEnabled(source.id, enabled.checked)); }
+          catch (error) { enabled.checked = source.enabled; throw error; }
+          return `${source.name} ${enabled.checked ? 'enabled' : 'disabled'} for predictions.`;
+        });
+      });
+      label.append(enabled, 'Use');
+      actions.append(label);
       for (const [label, operation] of [
         ['Reindex', async () => { unwrap(await window.typeNudge.reindexSource(source.id)); return `${source.name} reindexed from its local copy.`; }],
         ['Delete', async () => { unwrap(await window.typeNudge.deleteSource(source.id)); return `${source.name} deleted from local sources.`; }],
@@ -48,8 +63,9 @@ export function initializeSources(): void {
   function setBusy(value: boolean): void {
     busy = value;
     dialog.setAttribute('aria-busy', String(value));
-    for (const button of dialog.querySelectorAll<HTMLButtonElement>('#import-button, .source-actions button')) button.disabled = value;
+    for (const control of dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement>('#import-button, .source-actions button, .source-actions input')) control.disabled = value;
     importButton.textContent = value ? 'Working…' : 'Import TXT / MD';
+    onBusy(value);
   }
   async function run(operation: () => Promise<string>): Promise<void> {
     if (busy) return;

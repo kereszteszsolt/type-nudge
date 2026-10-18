@@ -23,7 +23,7 @@ const frame = { url: entry };
 const contents = { mainFrame: frame };
 const window = { isDestroyed: () => false, webContents: contents } as unknown as BrowserWindow;
 const event = { sender: contents, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-const store = { list: vi.fn(), delete: vi.fn(), reindex: vi.fn() };
+const store = { list: vi.fn(), delete: vi.fn(), reindex: vi.fn(), setEnabled: vi.fn() };
 
 function call(channel: string, input = event, ...args: unknown[]): unknown {
   return mocks.handlers.get(channel)!(input, ...args);
@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 describe('source IPC boundary', () => {
-  it('exposes only four source operations and lists metadata from the store', async () => {
+  it('exposes only named source operations and lists metadata from the store', async () => {
     expect([...mocks.handlers.keys()]).toEqual(Object.values(sourceChannels));
     await expect(call(sourceChannels.list)).resolves.toEqual({ ok: true, value: [] });
   });
@@ -70,6 +70,14 @@ describe('source IPC boundary', () => {
       expect(() => call(channel, event, ...args)).toThrow('valid source ID');
     }
     await expect(call(channel, event, id)).resolves.toMatchObject({ ok: true });
+  });
+
+  it('requires a UUID and an actual boolean to toggle one imported source', async () => {
+    for (const args of [[], [id], [id, 1], [id, 'false'], [id, null], [id, true, 'extra'], ['/etc/passwd', false]]) {
+      expect(() => call(sourceChannels.enable, event, ...args)).toThrow('boolean');
+    }
+    await expect(call(sourceChannels.enable, event, id, false)).resolves.toMatchObject({ ok: true });
+    expect(store.setEnabled).toHaveBeenCalledExactlyOnceWith(id, false);
   });
 
   it.each(Object.values(sourceChannels))('rejects a different window or subframe on %s', (channel) => {

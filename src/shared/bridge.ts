@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { SourcesBridge } from './sources';
+import type { PredictionBridge } from './prediction';
 
 export const channels = {
   appInfo: 'app:info',
@@ -27,7 +28,7 @@ export interface AppInfo {
   links: { id: LinkId; label: string }[];
 }
 
-export interface DesktopBridge extends SourcesBridge {
+export interface DesktopBridge extends SourcesBridge, PredictionBridge {
   getAppInfo(): Promise<AppInfo>;
   openLink(id: LinkId): Promise<void>;
 }

@@ -6,6 +6,7 @@ export const sourceChannels = {
   import: 'sources:import',
   reindex: 'sources:reindex',
   delete: 'sources:delete',
+  enable: 'sources:enable',
 } as const;
 
 export const importLimits = {
@@ -42,4 +43,5 @@ export interface SourcesBridge {
   importSources(): Promise<SourceResult<ImportReport>>;
   reindexSource(id: string): Promise<SourceResult<SourceSummary>>;
   deleteSource(id: string): Promise<SourceResult<void>>;
+  setSourceEnabled(id: string, enabled: boolean): Promise<SourceResult<SourceSummary>>;
 }

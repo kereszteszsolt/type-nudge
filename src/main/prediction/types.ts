@@ -1,27 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-export type NgramOrder = 1 | 2 | 3;
-
-export interface PredictionRequest {
-  readonly prefix: string;
-  // Completed words from the current sentence/document only, oldest first.
-  readonly context: readonly string[];
-  readonly sourceIds: readonly string[];
-  readonly enabledN: readonly NgramOrder[];
-}
-
-export interface PredictionCandidate {
-  readonly word: string;
-  readonly display: string;
-  readonly frequency: number;
-}
-
-export interface PredictionResult {
-  readonly candidates: readonly PredictionCandidate[];
-  readonly order: NgramOrder | null;
-  readonly indexRevision: number;
-}
+import type { NgramOrder, PredictionCandidate } from '../../shared/prediction';
+export type { NgramOrder, PredictionRequest, PredictionCandidate, PredictionResult } from '../../shared/prediction';
 
 export interface PredictionSnapshot {
   readonly indexRevision: number;

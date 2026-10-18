@@ -1,6 +1,6 @@
 # Testing and evidence plan
 
-TND-001–003 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001–004 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
 
 ## Foundation checks
 
@@ -37,7 +37,20 @@ npm run benchmark:prediction
 
 The 48 pure/unit cases cover all seven nonempty N selections, disabled/unusable-order skipping, longest-context backoff, input bounds, Unicode normalization, equivalent cache keys, LRU eviction, empty/failed queries, revision/source/settings changes and immutable results. The 22 real SQLite integration cases cover exact cross-source aggregation, binary ties/top-three uniqueness, multilingual/supplementary prefixes, apostrophes, completed-word exclusion, sentence/document boundaries, disabled/unselected sources at all orders, primary-key query plans, source mutation/cache invalidation, rollback and read-snapshot consistency. The full `npm test` also runs the import/IPC regression suites.
 
-The benchmark builds the actual core into ignored `.cache/prediction-benchmark/` and uses temporary DBs/synthetic text, never user data. It checks outputs and unchanged source metadata, then removes the temporary data. Desktop/packaging checks are not repeated for this main-process algorithm story; its new editor-facing path does not exist until TND-004. Earlier desktop evidence remains scoped to the story that produced it.
+The benchmark builds the actual core into ignored `.cache/prediction-benchmark/` and uses temporary DBs/synthetic text, never user data. It checks outputs and unchanged source metadata, then removes the temporary data. Desktop/packaging checks were not repeated for the main-process-only TND-003 story. TND-004 adds the editor-facing path and its own desktop evidence below.
+
+## Inline suggestions and settings (TND-004)
+
+```bash
+npm test -- tests/unit/suggestions.test.ts tests/unit/prediction-ipc.test.ts tests/unit/sources-ipc.test.ts tests/unit/preload.test.ts tests/integration/storage.test.ts
+npm run typecheck
+npm run package
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```
+
+Pure CodeMirror state tests exercise bounded caret/context extraction, sentence/line boundaries, selections/multiple carets/midword suppression, Unicode suffix preservation and long input. The async gate tests cover debounce, out-of-order/ABA replies, cancellation, failed replies and destruction. Main/preload tests reject renderer-selected SQL, paths, source IDs, N overrides, malformed/overlong words, nonempty-N violations, extra settings and untrusted senders. Real SQLite tests exercise transactional preference writes/rollback, persistence, source modes, idempotent activation and unchanged counts/other sources.
+
+The real packaged Electron suite adds prefix/next-word/Unicode completion, all three keys, cycling wraparound, copy excluding ghost text, completion undo, persistent mode/N/activation, empty corpus and immediate N behavior. Controlled delayed IPC handlers exercise out-of-order typing replies, cursor movement, settings/source changes, dismissal while pending, failure/retry and synthetic IME composition. A delayed dialog plus delayed preference reply verifies that editing stays available and suggestions remain suspended until both operations finish. Those controlled handlers are test-only and restored by restarting Electron. Physical IME, accessibility hardware and other OS targets remain separately unverified.
 
 ## Later release test plan
 

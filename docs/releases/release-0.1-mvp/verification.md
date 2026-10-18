@@ -2,14 +2,14 @@
 
 ## State
 
-**Release in progress.** TND-001–003 have implementation and real verification evidence below. TND-004–006 remain Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
+**Release in progress.** TND-001–004 have implementation and real verification evidence below. TND-005–006 remain Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
 
 | Story | Status | Source / unit checks | Desktop / packaging checks | Notes |
 | --- | --- | --- | --- | --- |
 | TND-001 | Implemented | 32 Vitest tests passed; typecheck passed | 5/5 desktop tests in each mode: development, production build, Linux x64 packaged executable (WSLg) | Foundation scope; see TND-002 for SQLite/import evidence; Windows/macOS Not run |
 | TND-002 | Implemented | 67 tests passed, including 22 real SQLite integration tests and 13 source IPC tests; typecheck passed | 6/6 desktop tests passed in development and on the actual Linux x64 packaged executable (WSLg) | SQLite 3.53.4 through better-sqlite3 13.0.3; native files unpacked; Windows/macOS Not run |
 | TND-003 | Implemented | 137 tests passed (70 focused prediction cases); typecheck and synthetic benchmark passed | Not run for this core-only story | Source-filtered prefix/backoff/ranking and bounded cache; no editor/IPC integration yet |
-| TND-004 | Planned | Not run | Not run | No CodeMirror ghost extension yet |
+| TND-004 | Implemented | 167 tests passed (66 focused); typecheck passed | 10/10 tests passed on the actual Linux x64 packaged executable (WSLg) | Inline commands, persisted source/N controls, delayed-reply cancellation and synthetic composition; physical IME/Windows/macOS Not run |
 | TND-005 | Planned | Not run | Not run | No document save or personal learner yet |
 | TND-006 | Planned | Not run | Not run | No CI, release installers or delivery verification yet |
 
@@ -224,3 +224,51 @@ Each case records **100 LRU-cleared samples** and **1,000 warm-LRU samples**, us
 | 30,000 | enabled-only backoff | 0.4786 / 0.5248 | 0.0250 / 0.0349 |
 
 Unigram uses no context/prefix; prefix uses `wo` and no context; bigram uses `['write']` + `wo`; trigram uses `['we','write']` + `wo`; backoff uses `['missing','write']` + `wo` with only N=1/3 enabled. Every fixture returned three expected candidates at the expected order. These are one local run's observations, not an end-to-end typing measurement, quality evaluation, worst-case corpus measurement or platform latency guarantee. Windows/macOS, editor/IME integration, source/settings controls, stale UI requests, personal learning and release delivery remain outside this story's proof.
+
+## TND-004 — 2026-10-18
+
+Implementation approved by the user's request to continue with TND-004. Starting point: clean `dev_r0.1` at TND-003 commit `c39892f`. Separate approval to commit TND-004 after review was received on 2026-10-18; the evidence below was recorded before that commit. Scope: connect the existing prediction core to CodeMirror, source activation and persistent source/N preferences. Document saving and personal learning remain unimplemented TND-005 work.
+
+### Environment and commands
+
+Ubuntu 26.04 LTS x64 / WSL2 kernel `6.6.87.2-microsoft-standard-WSL2`, WSLg `:0` / `wayland-0`, Node 24.18.0, npm 11.16.0. Existing pinned Electron 44.9.0, CodeMirror 6 and `better-sqlite3` 13.0.3; no dependencies, lockfile, packaging configuration or schema version changed. Shared prediction DTOs and pure Unicode helpers now live under `src/shared/`; index/backoff/ranking semantics are preserved.
+
+```bash
+export PATH=/home/zsolti-wsl/.nvm/versions/node/v24.18.0/bin:$PATH
+npm test -- tests/unit/suggestions.test.ts tests/unit/prediction-ipc.test.ts tests/unit/sources-ipc.test.ts tests/unit/preload.test.ts tests/integration/storage.test.ts
+npm test
+npm run typecheck
+export LD_LIBRARY_PATH=/tmp/type-nudge-linux-deps/extracted/usr/lib/x86_64-linux-gnu
+npm run package
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+git diff --check
+```
+
+The temporary Linux GUI libraries are the preparation documented under TND-001. The first sandboxed package attempt built all production Vite bundles, then failed with `TypeError: fetch failed` during Forge's copy/download stage. Packaging passed outside the execution sandbox after automatic approval, as did graphical checks. Electron's own Chromium sandbox stayed enabled; no `--no-sandbox` flag was used. After the final UI concurrency refinement, the package was rebuilt and all final checks passed. No failed check remains unresolved.
+
+| Check | Observed result |
+| --- | --- |
+| Focused Vitest command above | Passed: 5 files, 66 tests, including existing boundary/storage regression cases. |
+| Full `npm test` | Passed: 9 files, 167 tests. |
+| `npm run typecheck` | Passed, including application and desktop harness. |
+| `npm run package` | Passed: actual Linux x64 app directory under `out/TypeNudge-linux-x64`, native dependency prepared successfully. No installer was produced. |
+| Packaged executable desktop command above | Passed: 10/10 tests in 13.7 seconds on the final build; real SQLite/import/prediction and restart paths exercised. |
+| `git diff --check` | Passed. Generated packages, screenshots, dependencies and runtime databases remain ignored. |
+
+### Behavior proved and fixture boundaries
+
+- Focused CodeMirror state tests cover current-sentence/line context, at most two prior words, Unicode/apostrophe/NFC suffixes, 4,096-unit bounded extraction, long-word rejection, selections/multiple carets and midword suppression. Pure async tests cover debounce, out-of-order/ABA responses, cancellation, failures and destruction.
+- Main/preload tests verify the named bridge, trusted window/frame/entry checks, bounded prefix/context and exact argument shapes. Renderer-supplied source IDs, N overrides, SQL/paths, unknown settings and an empty N set are rejected before storage. Recoverable DB errors are sanitized.
+- Real SQLite tests verify mode/N persistence across reopen, transactional two-field rollback, personal consent still off, all source modes, idempotent one-source activation and unchanged content revisions/counts/other-source contributions. Source toggles advance the global prediction revision without reindexing.
+- The packaged UI imports a synthetic corpus: `we write words. we write world. we write work. Árvíz árnyék.` Typing `we write wo` shows `rds`; Alt+Down cycles `rk`, `rld`, then wraps; Esc clears it; Tab inserts only the suffix. Clipboard checks exclude ghost text, and one undo restores the typed prefix. Next-word prediction and accented completion are also exercised against the real engine/SQLite.
+- Actual UI checks cover independent N controls (last selected N cannot be disabled), immediate unigram/trigram behavior, Imported Texts/My Writing/Combined, explicit personal/empty corpus states, per-import activation, restart persistence and normal Tab traversal with no suggestion.
+- Test-only delayed prediction handlers exercise newer typing, cursor movement, source/N changes, dismissal while pending, failure/retry and synthetic composition start/end through real IPC and CodeMirror. A controlled delayed preference response overlaps a pending picker; closing the Sources dialog leaves editing responsive, with suggestions/settings suspended until both complete. Those test handlers are restored by restarting Electron. Normal prediction/import/persistence tests use the production handlers; the OS picker selection alone is stubbed.
+- Existing security/clipboard/editor/small-window/import checks remain passing. The Linux renderer still reports `Seccomp: 2` and `NoNewPrivs: 1`; Node/`process` remain absent, the bridge is frozen/narrow, remote fetch/popups stay blocked and CSP excludes inline script/eval permissions.
+
+Actual screenshots under ignored `test-results/` include `inline-suggestions.png`; the completed editor/settings/ghost-text screenshot was visually inspected. No user documents, imported runtime files, screenshots or generated packages are added to version control.
+
+### Limits and Not run
+
+Native Windows, macOS, Linux outside WSLg, other architectures, installers/signing, physical IME input and assistive-technology hardware: **Not run**. Composition coverage uses synthetic DOM events, not a physical IME. Development-server mode was not repeated for this story; final UI proof uses the actual packaged production executable. External-browser dispatch remains stubbed as in earlier stories.
+
+No new latency benchmark or worst-case typing/corpus measurement was run. The 60 ms debounce is an implementation setting, not a performance result; existing TND-003 measurements exclude IPC/UI. Already-sent IPC work cannot be aborted, and synchronous bounded database/index work still runs in main, outside the renderer event loop. My Writing has no learned corpus until TND-005; choosing it does not enable learning or persist session text.

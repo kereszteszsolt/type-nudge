@@ -17,6 +17,20 @@
       </header>
       <main>
         <div class="document-heading"><h2 id="document-title">Untitled</h2><span>Plain text</span></div>
+        <div class="prediction-controls" aria-label="Prediction settings">
+          <label for="prediction-source">Predict from</label>
+          <select id="prediction-source" disabled>
+            <option value="imported">Imported Texts</option>
+            <option value="personal">My Writing</option>
+            <option value="combined">Combined</option>
+          </select>
+          <fieldset><legend>N-grams</legend>
+            <label><input type="checkbox" name="ngram" value="1" checked disabled> N=1</label>
+            <label><input type="checkbox" name="ngram" value="2" checked disabled> N=2</label>
+            <label><input type="checkbox" name="ngram" value="3" checked disabled> N=3</label>
+          </fieldset>
+        </div>
+        <p id="prediction-status" role="status">Loading local suggestions…</p>
         <div id="editor" aria-describedby="session-note"></div>
       </main>
       <footer class="status-bar">
@@ -27,7 +41,7 @@
     <dialog id="sources-dialog" aria-labelledby="sources-title">
       <h2 id="sources-title">Text sources</h2>
       <p>Import UTF-8 TXT or Markdown files. Up to 10 files, 1 MiB each, 4 MiB per selection.</p>
-      <p class="source-note">Local copies stay on this device. Reimport a changed file to replace its counts, or reindex its stored copy. Source predictions arrive in a later update.</p>
+      <p class="source-note">Local copies stay on this device. Choose which files contribute to predictions. Reimport a changed file to replace its counts, or reindex its stored copy.</p>
       <button id="import-button" type="button">Import TXT / MD</button>
       <p id="sources-status" role="status" aria-live="polite"></p>
       <p id="sources-empty">No sources yet. Choose text files to build your local index.</p>

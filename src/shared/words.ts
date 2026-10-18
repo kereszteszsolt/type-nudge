@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-// Keep indexing and prediction comparison keys identical without locale guessing.
+// Keep indexing, prediction and inline suffix comparison identical.
 export function normalizeWord(word: string): string {
   return word.normalize('NFC').toLowerCase().replaceAll('’', "'").normalize('NFC');
 }

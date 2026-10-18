@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 
-export function createEditor(parent: HTMLElement): EditorView {
+export function createEditor(parent: HTMLElement, suggestions: Extension = []): EditorView {
   return new EditorView({
     parent,
     state: EditorState.create({
       extensions: [
+        suggestions,
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         EditorView.lineWrapping,
@@ -28,7 +29,7 @@ export function createEditor(parent: HTMLElement): EditorView {
         }),
         EditorView.contentAttributes.of({
           'aria-label': 'Document text',
-          'aria-describedby': 'session-note',
+          'aria-describedby': 'session-note prediction-status',
           spellcheck: 'false',
         }),
         placeholder('Start writing…'),

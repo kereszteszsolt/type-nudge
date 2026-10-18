@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { importLimits } from '../../shared/sources';
-import { completeWord, normalizeWord, partialWord } from '../text/words';
+import { completeWord, normalizeWord, partialWord } from '../../shared/words';
 import type { NgramOrder, PredictionRequest } from './types';
 
 function word(value: unknown, partial: boolean): string {

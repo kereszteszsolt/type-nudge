@@ -43,6 +43,51 @@ function revision(): string {
 }
 
 describe('real SQLite source storage', () => {
+  it('persists source/N preferences across reopen without enabling learning or changing counts', () => {
+    store.replace('settings-fixture', 'fixture.txt', 'we write words');
+    const source = store.list()[0]!;
+    const counts = grams(source.id, 2);
+    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'imported', enabledN: [1, 2, 3] });
+    expect(store.setPredictionSettings({ sourceMode: 'combined', enabledN: [3, 1] })).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
+    expect(() => store.setPredictionSettings({ sourceMode: 'personal', enabledN: [] })).toThrow();
+    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
+    expect(inspection.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get()).toEqual({ value: 'false' });
+    expect(grams(source.id, 2)).toEqual(counts);
+    store.close();
+    store = new SourceStore(path.join(directory, 'sources.sqlite3'));
+    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
+  });
+
+  it('toggles only the selected source, preserving all counts/revisions and applying every source mode', () => {
+    store.replace('a', 'a.txt', 'we write words');
+    store.replace('b', 'b.txt', 'other corpus');
+    const [first, second] = store.list() as [NonNullable<ReturnType<SourceStore['list']>[0]>, NonNullable<ReturnType<SourceStore['list']>[0]>];
+    const originalCounts = grams(first.id, 2), otherCounts = grams(second.id, 1);
+    const indexRevision = revision();
+    expect(store.setEnabled(first.id, false)).toEqual({ ...first, enabled: false });
+    expect(revision()).not.toBe(indexRevision);
+    const after = revision();
+    store.setEnabled(first.id, false);
+    expect(revision()).toBe(after);
+    expect(store.list().find((source) => source.id === second.id)).toEqual(second);
+    expect(grams(first.id, 2)).toEqual(originalCounts); expect(grams(second.id, 1)).toEqual(otherCounts);
+    expect(store.predictionSourceIds('imported')).toEqual([second.id]);
+    expect(store.predictionSourceIds('personal')).toEqual([]);
+    inspection.prepare("UPDATE sources SET kind = 'personal' WHERE id = ?").run(second.id);
+    expect(store.predictionSourceIds('imported')).toEqual([]);
+    expect(store.predictionSourceIds('personal')).toEqual([second.id]);
+    expect(store.predictionSourceIds('combined')).toEqual([second.id]);
+    expect(() => store.setEnabled(second.id, false)).toThrow('no longer exists');
+    store.setEnabled(first.id, true);
+    expect(store.predictionSourceIds('combined')).toEqual([first.id, second.id].sort());
+  });
+
+  it('rolls back both preference fields together on a failed settings write', () => {
+    inspection.exec("CREATE TRIGGER reject_setting BEFORE UPDATE ON settings WHEN new.key = 'enabledN' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END");
+    expect(() => store.setPredictionSettings({ sourceMode: 'combined', enabledN: [2] })).toThrow();
+    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'imported', enabledN: [1, 2, 3] });
+  });
+
   it('migrates a persistent DB with consent off, all N sizes, constraints and lookup indexes', () => {
     expect(inspection.pragma('user_version', { simple: true })).toBe(1);
     expect(inspection.pragma('journal_mode', { simple: true })).toBe('wal');

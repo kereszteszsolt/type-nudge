@@ -12,6 +12,9 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
 button { font: inherit; cursor: pointer; }
+select, input { font: inherit; accent-color: #315e49; }
+select { color: inherit; background: #fff; border: 1px solid #d1d7cf; border-radius: 6px; padding: 5px; max-width: 100%; }
+select:focus-visible, input:focus-visible { outline: 2px solid #315e49; outline-offset: 2px; }
 button:disabled { cursor: default; }
 button:focus-visible { outline: 2px solid #315e49; outline-offset: 4px; }
 button:not(.text-button) {
@@ -35,6 +38,12 @@ main { min-height: 0; width: min(100% - 64px, 820px); margin: 24px auto; display
 h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .document-heading span { color: #626d64; font-size: 12px; }
 #editor { min-height: 0; flex: 1; background: #fff; border: 1px solid #dce1d7; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #29362f06; }
+.prediction-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.prediction-controls fieldset { display: flex; gap: 10px; border: 0; padding: 0; margin: 0 0 0 auto; }
+.prediction-controls legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.prediction-controls label, .source-actions label { display: inline-flex; align-items: center; gap: 3px; }
+#prediction-status { font-size: 12px; color: #626d64; margin: 8px 0 12px; min-height: 18px; }
+.cm-ghost { color: #7f8a83; pointer-events: none; user-select: none; }
 .status-bar { display: flex; gap: 16px; justify-content: space-between; align-items: center; border-top: 1px solid #e0e3db; padding: 12px 28px; font-size: 12px; color: #626d64; }
 dialog { color: inherit; background: #fff; border: 1px solid #d1d7cf; border-radius: 12px; padding: 28px; width: min(440px, 90vw); box-shadow: 0 12px 60px #0002; }
 dialog::backdrop { background: #1c292b55; }

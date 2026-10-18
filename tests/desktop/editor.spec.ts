@@ -63,7 +63,8 @@ test('starts one isolated window with restrictive CSP and a narrow bridge', asyn
     node: typeof (window as unknown as { require?: unknown }).require,
     process: typeof (window as unknown as { process?: unknown }).process,
     bridge: Object.keys(window.typeNudge),
-  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource'] });
+  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource',
+    'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings'] });
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("default-src 'none'");
   expect(csp).not.toContain('unsafe-inline');
@@ -221,4 +222,232 @@ test('imports selected files, replaces/reindexes/deletes independently and persi
   expect(inspect((db) => db.pragma('integrity_check', { simple: true }))).toBe('ok');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'Sources', exact: true })).toBeFocused();
+});
+
+test('shows real SQLite partial completions and supports Tab, Alt+Down, Esc, copy and undo', async () => {
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1040, 780));
+  const fixture = path.join(userData, 'predictions.txt');
+  await writeFile(fixture, 'we write words. we write world. we write work. Árvíz árnyék.');
+  await application.evaluate(({ dialog }, selected) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] }); }, fixture);
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await page.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
+  await expect(page.locator('#sources-status')).toContainText('1 imported');
+  await page.keyboard.press('Escape');
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  const ghost = page.locator('.cm-ghost');
+  await editor.fill('we write wo');
+  await page.keyboard.press('End');
+  await expect(ghost).toHaveText('rds');
+  await expect(ghost).toHaveAttribute('aria-hidden', 'true');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(ghost).toHaveText('rk');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(ghost).toHaveText('rld');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(ghost).toHaveText('rds');
+  await page.keyboard.press('Escape');
+  await expect(ghost).toHaveCount(0);
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.press(`${modifier}+c`);
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write wo');
+  await page.keyboard.press('ArrowRight');
+  await expect(ghost).toHaveText('rds');
+  await page.screenshot({ path: test.info().outputPath('inline-suggestions.png') });
+  await page.keyboard.press('Tab');
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.press(`${modifier}+c`);
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write words');
+  await page.keyboard.press(`${modifier}+z`);
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.press(`${modifier}+c`);
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write wo');
+  await expect(ghost).toHaveCount(0);
+  await editor.fill('we write ');
+  await page.keyboard.press('End');
+  await expect(ghost).toHaveText('words');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.press(`${modifier}+c`);
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write words');
+  await editor.fill('Ár');
+  await page.keyboard.press('End');
+  await expect(ghost).toHaveText('nyék');
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(ghost).toHaveText('víz');
+  await page.keyboard.press('Tab');
+  await expect(editor.locator('.cm-line')).toHaveText('Árvíz');
+});
+
+test('persists source/N settings, prevents an empty N selection and handles no active corpus', async () => {
+  const mode = page.getByLabel('Predict from');
+  await mode.selectOption('personal');
+  await expect(page.locator('#prediction-status')).toContainText('My Writing has no learned text');
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  await editor.fill('we write wo');
+  await page.keyboard.press('End');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Support', exact: true })).toBeFocused();
+  await mode.selectOption('combined');
+  await page.getByRole('checkbox', { name: 'N=2', exact: true }).uncheck();
+  await page.getByRole('checkbox', { name: 'N=3', exact: true }).uncheck();
+  await expect(page.getByRole('checkbox', { name: 'N=1', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Use predictions.txt for predictions', exact: true }).uncheck();
+  await expect(page.locator('#sources-status')).toContainText('disabled for predictions');
+  await page.getByRole('checkbox', { name: 'Use chosen-en.md for predictions', exact: true }).uncheck();
+  await expect(page.locator('#sources-status')).toContainText('disabled for predictions');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#prediction-status')).toContainText('No active corpus');
+  await editor.fill('wo');
+  await page.keyboard.press('End');
+  await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  await application.close();
+  await launchApplication();
+  await expect(page.getByLabel('Predict from')).toHaveValue('combined');
+  await expect(page.getByRole('checkbox', { name: 'N=1', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'N=2', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'N=3', exact: true })).not.toBeChecked();
+  await expect(page.locator('#prediction-status')).toContainText('No active corpus');
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Use predictions.txt for predictions', exact: true })).not.toBeChecked();
+  await page.getByRole('checkbox', { name: 'Use predictions.txt for predictions', exact: true }).check();
+  await expect(page.locator('#sources-status')).toContainText('enabled for predictions');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#prediction-status')).toContainText('1 active imported source');
+  // With N=1 only, the corpus frequency winner is "we", not the contextual "words".
+  await page.getByRole('textbox', { name: 'Document text' }).fill('we write ');
+  await page.keyboard.press('End');
+  await expect(page.locator('.cm-ghost')).toHaveText('we');
+  await page.getByRole('checkbox', { name: 'N=3', exact: true }).check();
+  await page.getByRole('textbox', { name: 'Document text' }).focus();
+  await expect(page.locator('.cm-ghost')).toHaveText('words');
+});
+
+test('keeps editing responsive and suggestions suspended across overlapping preference/import replies', async () => {
+  await application.evaluate(({ ipcMain, dialog }) => {
+    ipcMain.removeHandler('prediction:configure');
+    ipcMain.handle('prediction:configure', (_event, settings) => new Promise((resolve) => {
+      (globalThis as unknown as { finishSettings: () => void }).finishSettings = () => resolve({ ok: true, value: settings });
+    }));
+    dialog.showOpenDialog = () => new Promise((resolve) => {
+      (globalThis as unknown as { finishPicker: () => void }).finishPicker = () => resolve({ canceled: true, filePaths: [] });
+    });
+  });
+  await page.getByLabel('Predict from').selectOption('imported');
+  await expect.poll(() => application.evaluate(() => typeof (globalThis as unknown as { finishSettings: unknown }).finishSettings)).toBe('function');
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await page.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
+  await expect.poll(() => application.evaluate(() => typeof (globalThis as unknown as { finishPicker: unknown }).finishPicker)).toBe('function');
+  await expect(page.locator('#sources-status')).toHaveText('Working with local sources…');
+  await page.keyboard.press('Escape');
+  await page.getByRole('textbox', { name: 'Document text' }).fill('wo');
+  await page.keyboard.press('End');
+  await application.evaluate(() => (globalThis as unknown as { finishSettings: () => void }).finishSettings());
+  await expect(page.getByLabel('Predict from')).toHaveValue('imported');
+  await expect(page.getByLabel('Predict from')).toBeDisabled();
+  await expect(page.locator('#prediction-status')).toContainText('You can keep writing');
+  await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  await expect(page.locator('.cm-line')).toHaveText('wo');
+  await application.evaluate(() => (globalThis as unknown as { finishPicker: () => void }).finishPicker());
+  await expect(page.getByLabel('Predict from')).toBeEnabled();
+  await expect(page.locator('.cm-ghost')).toHaveText('rds');
+  // Restore real production IPC after the controlled delayed-handler fixture.
+  await application.close();
+  await launchApplication();
+});
+
+test('drops delayed IPC after newer edits, cursor movement, source/N changes and composition', async () => {
+  type Pending = { input: { prefix: string }; resolve: (result: unknown) => void };
+  await application.evaluate(({ ipcMain }) => {
+    const pending: Pending[] = [];
+    (globalThis as unknown as { predictionPending: Pending[] }).predictionPending = pending;
+    ipcMain.removeHandler('prediction:query');
+    ipcMain.handle('prediction:query', (_event, input) => new Promise((resolve) => pending.push({ input, resolve })));
+  });
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  const ghost = page.locator('.cm-ghost');
+  const count = () => application.evaluate(() => (globalThis as unknown as { predictionPending: Pending[] }).predictionPending.length);
+  async function release(index: number, word = 'words'): Promise<void> {
+    await application.evaluate((_electron, { index, word }) => {
+      (globalThis as unknown as { predictionPending: Pending[] }).predictionPending[index]!.resolve({ ok: true,
+        value: { candidates: [{ word, display: word, frequency: 1 }], order: 1, indexRevision: 1 } });
+    }, { index, word });
+    // Allow the real asynchronous IPC reply and two renderer turns to run.
+    await page.waitForTimeout(120);
+  }
+  let before = await count();
+  await editor.fill('wo');
+  await page.keyboard.press('End');
+  await expect.poll(count).toBeGreaterThan(before);
+  const old = (await count()) - 1;
+  await page.keyboard.type('r');
+  await expect.poll(count).toBeGreaterThan(old + 1);
+  const newer = (await count()) - 1;
+  await release(newer, 'work');
+  await expect(ghost).toHaveText('k');
+  await release(old, 'world');
+  await expect(ghost).toHaveText('k');
+
+  before = await count();
+  await editor.fill('wo');
+  await page.keyboard.press('End');
+  await expect.poll(count).toBeGreaterThan(before);
+  const moved = (await count()) - 1;
+  await page.keyboard.press('ArrowLeft');
+  await release(moved);
+  await expect(ghost).toHaveCount(0);
+
+  before = await count();
+  await page.keyboard.press('End');
+  await expect.poll(count).toBeGreaterThan(before);
+  const changedSettings = (await count()) - 1;
+  await page.getByRole('checkbox', { name: 'N=2', exact: true }).check();
+  await release(changedSettings);
+  await expect(ghost).toHaveCount(0);
+  await editor.focus();
+  await expect.poll(count).toBeGreaterThan(changedSettings + 1);
+  const changedSource = (await count()) - 1;
+  await page.getByLabel('Predict from').selectOption('personal');
+  await release(changedSource);
+  await expect(ghost).toHaveCount(0);
+  await page.getByLabel('Predict from').selectOption('imported');
+  await editor.focus();
+  await expect.poll(count).toBeGreaterThan(changedSource + 1);
+  const composing = (await count()) - 1;
+  await editor.dispatchEvent('compositionstart', { data: '' });
+  await release(composing);
+  await expect(ghost).toHaveCount(0);
+  await editor.dispatchEvent('keydown', { key: 'Tab', code: 'Tab', isComposing: true });
+  await expect(editor.locator('.cm-line')).toHaveText('wo');
+  await editor.dispatchEvent('compositionend', { data: '' });
+  await expect.poll(count).toBeGreaterThan(composing + 1);
+  const afterComposition = (await count()) - 1;
+  await release(afterComposition);
+  await expect(ghost).toHaveText('rds');
+  await page.keyboard.press('Escape');
+  await expect(ghost).toHaveCount(0);
+  before = await count();
+  await editor.fill('wor');
+  await page.keyboard.press('End');
+  await expect.poll(count).toBeGreaterThan(before);
+  const pendingDismiss = (await count()) - 1;
+  await page.keyboard.press('Escape');
+  await release(pendingDismiss);
+  await expect(ghost).toHaveCount(0);
+  before = await count();
+  await editor.fill('wo');
+  await page.keyboard.press('End');
+  await expect.poll(count).toBeGreaterThan(before);
+  await application.evaluate(() => {
+    (globalThis as unknown as { predictionPending: Pending[] }).predictionPending.at(-1)!.resolve({ ok: false, error: 'Fixture failure' });
+  });
+  await expect(page.locator('#prediction-status')).toContainText('Suggestions unavailable');
+  before = await count();
+  await page.keyboard.type('r');
+  await expect.poll(count).toBeGreaterThan(before);
+  await release((await count()) - 1, 'work');
+  await expect(ghost).toHaveText('k');
+  await expect(page.locator('#prediction-status')).toContainText('1 active imported source');
+  expect(pageErrors).toEqual([]);
 });
