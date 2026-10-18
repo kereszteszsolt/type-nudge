@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
+import type { SourcesBridge } from './sources';
+
 export const channels = {
   appInfo: 'app:info',
   openLink: 'app:open-link',
@@ -25,7 +27,7 @@ export interface AppInfo {
   links: { id: LinkId; label: string }[];
 }
 
-export interface DesktopBridge {
+export interface DesktopBridge extends SourcesBridge {
   getAppInfo(): Promise<AppInfo>;
   openLink(id: LinkId): Promise<void>;
 }

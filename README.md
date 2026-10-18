@@ -9,7 +9,9 @@
 
 **TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. The TND-001 foundation provides a plain-text CodeMirror editor. Later stories will suggest word completions and likely next words as subtle **ghost text** inside its own editor. Suggestions will come from a lightweight, local **unigram/bigram/trigram** model learned from text files and optionally from saved writing — **not** from an LLM or cloud API.
 
-> **Repository status: TND-001 foundation implemented; Release 0.1 is in progress.** Available: a single-window editor, normal editing shortcuts, display branding/About, and a restricted preload bridge. **Text is session-only and is discarded when the window closes.** Save, SQLite, imports, learning and predictions are still planned in TND-002–006. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001 editor and TND-002 SQLite/import implementation; Release 0.1 is in progress.** Available: a single-window editor, normal editing shortcuts, display branding/About, and local text-source management through restricted IPC. **Editor text is session-only and is discarded when the window closes.** Imported source copies and N=1/2/3 counts persist locally. Document saving, learning and predictions remain planned in TND-003–006. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+
+Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text. Source activation/settings and suggestions arrive in later stories.
 
 ## Planned Release 0.1 — Offline Predictive Writing MVP
 
@@ -94,7 +96,7 @@ A **prefix match** completes a partially typed word; a **word N-gram** predicts 
 | Desktop smoke checks | Playwright Electron support or an equivalent reproducible Electron harness |
 | Delivery | GitHub Actions for focused checks; packaging on supported OS runners |
 
-The foundation pins Electron **44.9.0**, TypeScript **7.0.2**, Vite **8.3.4**, Forge **8.0.1**, CodeMirror 6 packages, Vitest **5.0.5**, and Playwright **1.64.1** in `package.json` and `package-lock.json`. SQLite is not installed yet; its native ABI/build compatibility must be checked when introduced. [Forge's Vite integration](https://www.electronforge.io/config/plugins/vite) remains experimental upstream, so upgrades require desktop checks. No backend server, Docker, React or LLM integration is planned.
+The foundation pins Electron **44.9.0**, TypeScript **7.0.2**, Vite **8.3.4**, Forge **8.0.1**, CodeMirror 6 packages, Vitest **5.0.5**, Playwright **1.64.1**, and `better-sqlite3` **13.0.3** in `package.json` and `package-lock.json`. SQLite stays external to the main JS bundle; Forge retains the native dependency and unpacks its native files from ASAR. [Forge's Vite integration](https://www.electronforge.io/config/plugins/vite) remains experimental upstream, so upgrades require desktop checks. No backend server, Docker, React or LLM integration is planned.
 
 ## Local run
 
@@ -110,20 +112,20 @@ npm run dev
 On Windows-mounted WSL checkouts, file notifications may miss edits. Restart `npm run dev` if the window keeps serving an older module; use a fresh `package` build for verification.
 
 ```bash
-npm test              # focused IPC/preload/security tests
+npm test              # IPC/security and real SQLite integration tests
 npm run typecheck
 npm run package       # builds the current platform's app directory under out/
 npm run test:desktop  # tests the built main/preload/renderer; run package first
 ```
 
-Desktop tests require a working graphical session and use temporary user data. To run the same checks against a packaged executable, set `TYPENUDGE_EXECUTABLE` to its absolute path (see [testing](docs/testing.md)). `package` produces an application directory, not an installer. Supported release packages, signing, native `better-sqlite3`, and CI remain TND-006 work. Windows and Linux remain target platforms; verified environments are listed separately in [release verification](docs/releases/release-0.1-mvp/verification.md).
+Desktop tests require a working graphical session and use temporary user data. To run the same checks against a packaged executable, set `TYPENUDGE_EXECUTABLE` to its absolute path (see [testing](docs/testing.md)). `package` produces an application directory, not an installer. Release installers, signing, cross-platform native delivery and CI remain TND-006 work. Windows and Linux remain target platforms; verified environments are listed separately in [release verification](docs/releases/release-0.1-mvp/verification.md).
 
 ## Development roadmap
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001 editor foundation; indexing, predictions, learning and release delivery remain planned |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001 editor and TND-002 source index; predictions, learning and release delivery remain planned |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001/002 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For GitHub metadata to apply **when the MVP is implemented**, see [About & Topics](docs/github-metadata.md).

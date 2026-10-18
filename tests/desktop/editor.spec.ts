@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import metadata from '../../package.json';
+import Database from 'better-sqlite3';
 
 let application: ElectronApplication;
 let page: Page;
 let userData: string;
 let pageErrors: string[];
 
-test.beforeAll(async () => {
-  userData = await mkdtemp(path.join(tmpdir(), 'typenudge-smoke-'));
+async function launchApplication(): Promise<void> {
   const executablePath = process.env.TYPENUDGE_EXECUTABLE;
   application = await _electron.launch({
     executablePath,
@@ -26,6 +26,11 @@ test.beforeAll(async () => {
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await expect(page.getByRole('textbox', { name: 'Document text' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'About', exact: true })).toBeEnabled();
+}
+
+test.beforeAll(async () => {
+  userData = await mkdtemp(path.join(tmpdir(), 'typenudge-smoke-'));
+  await launchApplication();
 });
 
 test.afterAll(async () => {
@@ -58,7 +63,7 @@ test('starts one isolated window with restrictive CSP and a narrow bridge', asyn
     node: typeof (window as unknown as { require?: unknown }).require,
     process: typeof (window as unknown as { process?: unknown }).process,
     bridge: Object.keys(window.typeNudge),
-  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink'] });
+  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource'] });
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("default-src 'none'");
   expect(csp).not.toContain('unsafe-inline');
@@ -146,4 +151,74 @@ test('remote connections and popups are blocked; the editor fits a small window'
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(520);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole('textbox', { name: 'Document text' })).toBeVisible();
+});
+
+test('imports selected files, replaces/reindexes/deletes independently and persists the SQLite store', async () => {
+  expect(await application.evaluate(({ app }) => app.getPath('userData'))).toBe(userData);
+  const first = path.join(userData, 'chosen-hu.txt');
+  const second = path.join(userData, 'chosen-en.md');
+  const invalid = path.join(userData, 'invalid.txt');
+  await writeFile(first, 'Árvíz árvíz tükör.');
+  await writeFile(second, 'Other text.');
+  await writeFile(invalid, Buffer.from([0xc3, 0x28]));
+
+  async function select(paths: string[], canceled = false): Promise<void> {
+    await application.evaluate(({ dialog }, selection) => {
+      dialog.showOpenDialog = async () => selection;
+    }, { canceled, filePaths: paths });
+  }
+  function inspect<T>(query: (db: Database.Database) => T): T {
+    const db = new Database(path.join(userData, 'typenudge.sqlite3'), { readonly: true });
+    try { return query(db); } finally { db.close(); }
+  }
+  const open = () => page.getByRole('button', { name: 'Sources', exact: true }).click();
+  const status = () => page.locator('#sources-status');
+  const imported = () => page.getByRole('list', { name: 'Imported sources' }).getByRole('listitem');
+  const importFiles = () => page.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
+
+  await open();
+  await expect(page.locator('#sources-empty')).toBeVisible();
+  await select([], true);
+  await importFiles();
+  await expect(status()).toHaveText('Import canceled.');
+  await select([first, second, invalid]);
+  await importFiles();
+  await expect(status()).toContainText('2 imported · 0 unchanged');
+  await expect(status()).toContainText('not valid UTF-8');
+  await expect(imported()).toHaveCount(2);
+  const firstId = inspect((db) => (db.prepare("SELECT id FROM sources WHERE display_name = 'chosen-hu.txt'").get() as { id: string }).id);
+  expect(inspect((db) => db.prepare('SELECT frequency FROM ngrams WHERE source_id = ? AND n = 1 AND next_token = ?').get(firstId, 'árvíz'))).toEqual({ frequency: 2 });
+
+  await select([first]);
+  await importFiles();
+  await expect(status()).toHaveText('0 imported · 1 unchanged');
+  await writeFile(first, 'Új szöveg.');
+  await importFiles();
+  await expect(status()).toHaveText('1 imported · 0 unchanged');
+  await expect(imported().filter({ hasText: 'chosen-hu.txt' })).toContainText('2 words · Revision 2');
+  expect(inspect((db) => db.prepare('SELECT next_token FROM ngrams WHERE source_id = ? AND n = 1 ORDER BY next_token').all(firstId)))
+    .toEqual([{ next_token: 'szöveg' }, { next_token: 'új' }]);
+  await rm(first);
+  await page.getByRole('button', { name: 'Reindex chosen-hu.txt', exact: true }).click();
+  await expect(imported().filter({ hasText: 'chosen-hu.txt' })).toContainText('Revision 3');
+
+  await select(Array(11).fill(second));
+  await importFiles();
+  await expect(status()).toContainText('at most 10 files');
+  await expect(imported()).toHaveCount(2);
+  await page.getByRole('button', { name: 'Delete chosen-hu.txt', exact: true }).click();
+  await expect(imported()).toHaveCount(1);
+  expect(inspect((db) => db.prepare('SELECT COUNT(*) AS count FROM ngrams WHERE source_id = ?').get(firstId))).toEqual({ count: 0 });
+  expect(inspect((db) => db.prepare('SELECT COUNT(*) AS count FROM documents WHERE source_id = ?').get(firstId))).toEqual({ count: 0 });
+  await page.screenshot({ path: test.info().outputPath('sources.png') });
+
+  await application.close();
+  await launchApplication();
+  await open();
+  await expect(imported()).toHaveCount(1);
+  await expect(imported()).toContainText('chosen-en.md');
+  expect(inspect((db) => db.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get())).toEqual({ value: 'false' });
+  expect(inspect((db) => db.pragma('integrity_check', { simple: true }))).toBe('ok');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Sources', exact: true })).toBeFocused();
 });

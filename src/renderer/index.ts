@@ -4,6 +4,7 @@
 import { createEditor } from './editor';
 import type { LinkId } from '../shared/bridge';
 import './styles.css';
+import { initializeSources } from './sources';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -13,6 +14,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 async function start(): Promise<void> {
   const editor = createEditor(element('editor'));
+  initializeSources();
   const info = await window.typeNudge.getAppInfo();
   document.title = info.name;
   element('app-name').textContent = info.name;

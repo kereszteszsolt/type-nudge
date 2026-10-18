@@ -4,6 +4,7 @@
 import { ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { channels, linkLabels, type AppInfo, type LinkId } from '../shared/bridge';
 import { safeExternalUrl } from './security';
+import { assertTrustedSender } from './ipc-sender';
 
 export function registerAppIpc(
   getWindow: () => BrowserWindow | null,
@@ -26,12 +27,7 @@ export function registerAppIpc(
   };
 
   function assertSender(event: IpcMainInvokeEvent): void {
-    const window = getWindow();
-    if (!window || window.isDestroyed() || event.sender !== window.webContents ||
-        !event.senderFrame || event.senderFrame !== window.webContents.mainFrame ||
-        event.senderFrame.url !== entry) {
-      throw new Error('Untrusted IPC sender.');
-    }
+    assertTrustedSender(event, getWindow(), entry);
   }
 
   ipcMain.handle(channels.appInfo, (event, ...args: unknown[]) => {

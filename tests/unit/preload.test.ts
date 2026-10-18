@@ -14,9 +14,16 @@ it('exposes named operations without raw IPC, events, SQL or filesystem access',
   await import('../../src/preload');
   const [name, bridge] = mocks.expose.mock.calls[0] as [string, DesktopBridge];
   expect(name).toBe('typeNudge');
-  expect(Object.keys(bridge)).toEqual(['getAppInfo', 'openLink']);
+  expect(Object.keys(bridge)).toEqual(['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource']);
   expect(Object.isFrozen(bridge)).toBe(true);
   await bridge.getAppInfo();
   await bridge.openLink('appGithubUrl');
-  expect(mocks.invoke.mock.calls).toEqual([['app:info'], ['app:open-link', 'appGithubUrl']]);
+  await bridge.listSources();
+  await bridge.importSources();
+  await bridge.reindexSource('source-id');
+  await bridge.deleteSource('source-id');
+  expect(mocks.invoke.mock.calls).toEqual([
+    ['app:info'], ['app:open-link', 'appGithubUrl'], ['sources:list'], ['sources:import'],
+    ['sources:reindex', 'source-id'], ['sources:delete', 'source-id'],
+  ]);
 });

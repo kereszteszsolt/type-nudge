@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 import branding from '../../brand/branding.json';
 import { registerAppIpc } from './ipc';
 import { allowRequest, localDevEntry } from './security';
+import { registerSourcesIpc } from './sources-ipc';
+import { SourceStore } from './storage/store';
 
 app.setName(branding.appName);
 app.enableSandbox();
@@ -14,6 +16,11 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-component-update');
 
 let window: BrowserWindow | null = null;
+let store: SourceStore | undefined;
+
+function getStore(): SourceStore {
+  return store ??= new SourceStore(path.join(app.getPath('userData'), 'typenudge.sqlite3'));
+}
 const entry = MAIN_WINDOW_VITE_DEV_SERVER_URL
   ? localDevEntry(MAIN_WINDOW_VITE_DEV_SERVER_URL)
   : pathToFileURL(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)).href;
@@ -58,6 +65,7 @@ void app.whenReady().then(() => {
   });
   session.defaultSession.on('will-download', (event) => event.preventDefault());
   registerAppIpc(() => window, entry, branding, app.getVersion());
+  registerSourcesIpc(() => window, entry, getStore);
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     { label: 'File', submenu: [{ role: 'quit' }] },
@@ -77,3 +85,4 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', () => store?.close());
