@@ -2,7 +2,7 @@
 
 ## State
 
-**Release in progress.** TND-001–005 have implementation and real verification evidence below. TND-006 remains Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
+**MVP implementation complete; locally verified on Linux x64/WSLg.** TND-001–006 have implementation and available-environment evidence below. Hosted CI, other native OS targets, installers/signing and publication remain outside that proof. Each section records the state when that story was verified.
 
 | Story | Status | Source / unit checks | Desktop / packaging checks | Notes |
 | --- | --- | --- | --- | --- |
@@ -11,7 +11,7 @@
 | TND-003 | Implemented | 137 tests passed (70 focused prediction cases); typecheck and synthetic benchmark passed | Not run for this core-only story | Source-filtered prefix/backoff/ranking and bounded cache; no editor/IPC integration yet |
 | TND-004 | Implemented | 167 tests passed (66 focused); typecheck passed | 10/10 tests passed on the actual Linux x64 packaged executable (WSLg) | Inline commands, persisted source/N controls, delayed-reply cancellation and synthetic composition; physical IME/Windows/macOS Not run |
 | TND-005 | Implemented | 196 tests passed (30 focused); typecheck passed | 13/13 tests passed on the actual Linux x64 packaged executable (WSLg) | Local documents, default-off save-time learning, schema-1 migration, rollback/reset/deletion and unsaved/stale-IPC protection; Windows/macOS Not run |
-| TND-006 | Planned | Not run | Not run | No CI, release installers or delivery verification yet |
+| TND-006 | Implemented | 196 tests/typecheck and fresh-install CI commands passed; indexing/prediction benchmark recorded | 13/13 final packaged and 13/13 development checks; native SQLite/license audit passed | CI workflow configured; hosted CI/Windows/macOS/installers Not run; initial input discrepancy recorded below |
 
 ## Recording conventions
 
@@ -322,3 +322,93 @@ Actual ignored screenshots include `personal-documents.png`; the saved-document/
 Native Windows/macOS, Linux outside WSLg, other architectures, installers/signing/CI, physical IME input, assistive-technology hardware and native support-browser launching: **Not run**. IME coverage remains the earlier synthetic composition checks. Development-server mode was not repeated; runtime proof uses the actual packaged production app.
 
 No new indexing/typing latency benchmark was run; the existing TND-003 measurements are historical core-only observations. Database/index work remains synchronous in main, with asynchronous renderer IPC and stale-result protection. Saved documents are local SQLite data under `userData`, not exported filesystem files. Unsaved drafts are in memory only; forced termination/OS failure recovery is not implemented. Save with learning enabled is atomic: an indexing limit/failure keeps the previous saved revision, and the writer can disable learning to save within text-storage limits.
+
+## TND-006 — 2026-10-18
+
+Implementation approved by the user's request to continue with TND-006. Starting point: clean `dev_r0.1` at TND-005 commit `6c8ad27`. Separate approval to commit TND-006 after review was received on 2026-10-18; the evidence below was recorded before that commit. Changes are limited to a small CI workflow, reproducible indexing measurements/result assertions and release documentation. No application, schema, dependency, prediction or UI behavior was changed.
+
+### Environment and commands
+
+Ubuntu 26.04 LTS x64 / WSL2 kernel `6.6.87.2-microsoft-standard-WSL2`, WSLg `:0` / `wayland-0`, AMD Ryzen 9 3900X 12-Core Processor, 24 logical CPUs and 31.3 GiB memory visible to WSL. Node 24.18.0 / npm 11.16.0; existing Electron 44.9.0, `better-sqlite3` 13.0.3 and SQLite 3.53.4. GUI libraries and execution-sandbox escalation follow the TND-001 preparation; Electron's own Chromium sandbox remained enabled.
+
+```bash
+export PATH=/home/zsolti-wsl/.nvm/versions/node/v24.18.0/bin:$PATH
+npm test
+npm run typecheck
+npm run benchmark:prediction
+export LD_LIBRARY_PATH=/tmp/type-nudge-linux-deps/extracted/usr/lib/x86_64-linux-gnu
+npm run package
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+# Targeted investigation after the initial typing anomaly:
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop -- --grep 'edits Unicode plain text'
+# A fresh full packaged run followed that targeted pass.
+# Development launch, with an isolated temporary profile:
+dev_profile=$(mktemp -d /tmp/typenudge-dev-XXXXXX)
+npm run dev -- -- "--user-data-dir=$dev_profile"
+# Separate terminal while dev/Vite was running:
+npm run test:desktop
+git diff --check
+```
+
+The development run used an isolated temporary profile and Forge's `q` command to stop the app/server after checks. The leftover profile was explicitly removed afterwards; the final cleanup probe confirmed no profile process and a closed Vite port. Package verification ran before dev, with no Vite server needed. `out/` remains a separate production copy; dev rewrites the root `.vite/` build and must be stopped before rebuilding it for production.
+
+| Check | Observed result |
+| --- | --- |
+| Full `npm test` | Passed: 11 files, 196 tests, covering all import/index, prediction/cache, source settings, personal documents/learning and IPC/security checks. |
+| `npm run typecheck` | Passed, including the expanded TypeScript benchmark and desktop harness. |
+| `npm run benchmark:prediction` | Passed: exact expected N/top-three outputs, unchanged prediction-source metadata, indexing hashes/token counts/revisions and fixture cleanup checked. Results below. |
+| Fresh local CI-like installation | Passed: `npm ci --no-fund`, typecheck and 196 tests with `ELECTRON_SKIP_BINARY_DOWNLOAD=1` in an isolated temporary copy. Install added 183 packages and audited 184 with 0 vulnerabilities reported at that time. |
+| Workflow validation | YAML parsed/reviewed: push/PR/manual events, read-only permissions, commit pins and install/typecheck/test steps. Hosted GitHub Actions: Not run. |
+| `npm run package` | Passed: unsigned Linux x64 application directory under `out/TypeNudge-linux-x64`; no installer created. |
+| Actual packaged executable suite | Final full run passed: 13/13 in 20.8 seconds. The real Electron main process opens/updates its `typenudge.sqlite3` under isolated `userData` through production import/save/restart paths. |
+| Development `npm run dev` + suite | App/Vite launched successfully; 13/13 desktop tests passed in 15.2 seconds. Stopped deliberately after verification. |
+| Package contents/license audit | Passed: all 8 shipped SQLite prebuilds are physically unpacked, including `better-sqlite3/prebuilds/linux-x64.node`; resource `LICENSE` equals repository `LICENSE`; bundled CodeMirror/MIT notices are present (10,411 bytes). Other prebuild filenames are not other-platform runtime proof. |
+| `git diff --check` | Passed; generated builds, DBs, dependencies, profiles and screenshots remain ignored. |
+
+The fresh-install check archived the tracked baseline to an OS temporary directory, overlaid the changed benchmark source, then ran the CI commands with the existing lockfile and a temporary npm cache. The fixture and its installed dependencies were removed afterwards. npm 11.16.0 emitted a non-blocking `allow-scripts` warning for `better-sqlite3`'s fallback install script; no manual script approval was applied, and real SQLite tests passed using the shipped Linux prebuild. This local Ubuntu 26.04 result does not claim a successful Ubuntu 24.04 hosted job.
+
+### Initial discrepancies and subsequent checks
+
+The first packaged suite was 12/13: the keyboard fixture `A second line` unexpectedly became `A secon d lineggg ` before clipboard actions. No source/test change was made to hide it. The same test passed with fresh user data on an unchanged package, followed by full packaged 13/13 and development 13/13 passes. The input anomaly's cause was not determined; it is recorded as a transient observed discrepancy, not a diagnosed/fixed application defect.
+
+An initial ad-hoc archive audit looked for the legacy filename `better_sqlite3.node` and failed that assumption. Inspecting the actual pinned dependency showed platform-named files under `prebuilds/`; the corrected audit verified their unpacked metadata and physical files. No package contents were changed to satisfy that audit.
+
+### CI scope and pins
+
+`.github/workflows/checks.yml` uses Ubuntu 24.04, Node 24.18.0, npm lockfile installation and a 15-minute timeout. It skips downloading the Electron executable; unit/SQLite tests need no graphical session. Checkout credentials are not persisted, repository permission is `contents: read`, npm caching is enabled and superseded checks are canceled. There is no GUI/packaging/publishing job and no separate lint configuration; TypeScript is the static check.
+
+The official v7 tag targets were resolved read-only through GitHub's public API: [checkout `3d3c42e`](https://github.com/actions/checkout/commit/3d3c42e5aac5ba805825da76410c181273ba90b1) and [setup-node `949feb2`](https://github.com/actions/setup-node/commit/949feb2413d6458794dcd2491c4babbbce0c15c1). Full commit IDs are pinned in the workflow. No GitHub run was triggered or advertised as green.
+
+### Indexing and prediction measurements
+
+Run `npm run benchmark:prediction` on the environment above. Each of two sources contains synthetic `we write wordX.` sentences, newline separated, with `X = sentenceIndex % 500`. The small fixture has 100 sentences/source (600 tokens / 3,378 UTF-8 bytes total), the medium 5,000/source (30,000 tokens / 177,798 bytes total). Continuation vocabulary is at most 500; these are modest bounded fixtures, not worst-case corpora.
+
+Five fresh temporary DBs per corpus measure initial indexing of both sources and then retained-copy reindexing of both. Timers include tokenization/hashing and SQLite writes/commits; DB open/schema creation, corpus construction, file selection/decoding and assertions are excluded. Indexing p95 with five samples is simply the maximum observed sample.
+
+| Total tokens / bytes | Initial indexing median / p95 (ms) | Reindex median / p95 (ms) |
+| --- | --- | --- |
+| 600 / 3,378 | 3.8941 / 9.7280 | 4.7127 / 5.0777 |
+| 30,000 / 177,798 | 56.3546 / 67.1981 | 55.4716 / 62.3048 |
+
+Prediction uses 100 LRU-cleared and 1,000 warm samples/case. Timers surround the actual `engine.predict` call, including normalization, source/revision snapshots, cache lookup and SQLite queries on misses. They exclude bundling/setup/assertions, Electron IPC, rendering, debounce and user typing. SQLite/OS pages are not flushed; `lruCleared` replaces the older output label `cold` to avoid implying cold disk/startup.
+
+| Total tokens | Case | LRU cleared median / p95 (ms) | Warm median / p95 (ms) |
+| --- | --- | --- | --- |
+| 600 | unigram | 0.1327 / 0.2076 | 0.0263 / 0.0550 |
+| 600 | prefix | 0.1244 / 0.1833 | 0.0244 / 0.0306 |
+| 600 | bigram | 0.1504 / 0.2226 | 0.0264 / 0.0417 |
+| 600 | trigram | 0.1270 / 0.1920 | 0.0261 / 0.0357 |
+| 600 | enabled-only backoff | 0.1332 / 0.1826 | 0.0257 / 0.0425 |
+| 30,000 | unigram | 0.4905 / 0.6873 | 0.0256 / 0.0420 |
+| 30,000 | prefix | 0.4796 / 0.5186 | 0.0254 / 0.0423 |
+| 30,000 | bigram | 0.4762 / 0.5337 | 0.0251 / 0.0384 |
+| 30,000 | trigram | 0.4748 / 0.5075 | 0.0256 / 0.0301 |
+| 30,000 | enabled-only backoff | 0.4843 / 0.5142 | 0.0253 / 0.0331 |
+
+Unigram uses empty prefix/context and returns `we`, `write`, `word0`. Other cases use prefix `wo`; bigram context is `['write']`, trigram `['we','write']`, and enabled-only backoff `['missing','write']` with N=1/3. Expected continuations are `word0`, `word1`, `word10`, with the expected enabled order asserted. Source snapshots remain unchanged by prediction; reindexing retains hashes/token counts while advancing source revisions once.
+
+### Release boundary and Not run
+
+All six stories' implementation/available-environment criteria now have evidence. This completes the MVP's local Linux x64/WSLg implementation/verification scope. It is not a published release or a universal support claim. Hosted GitHub Actions, native Windows/macOS, native Linux outside WSLg, other architectures, installers/signing, physical IME, assistive-technology hardware and actual support-browser launch remain **Not run**. No release tag or uploaded binary exists from this work.
+
+These measurements are one local run with limited vocabulary and uncontrolled system load; they are not quality, worst-case, end-to-end typing or cross-platform performance guarantees. GUI tests use the existing controlled dialog/delayed-handler fixtures described in TND-004/005. No user corpus was used, and no runtime files/screenshots/builds are committed.

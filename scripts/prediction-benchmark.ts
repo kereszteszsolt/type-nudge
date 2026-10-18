@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import Database from 'better-sqlite3';
 import { SourceStore } from '../src/main/storage/store';
 import { PredictionEngine } from '../src/main/prediction/engine';
 import type { NgramOrder, PredictionRequest } from '../src/main/prediction/types';
@@ -18,7 +19,41 @@ function summary(samples: number[]): { medianMs: number; p95Ms: number } {
 }
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
-console.log(JSON.stringify({ environment: { cpu: os.cpus()[0]?.model, node: process.version, os: os.platform(), architecture: os.arch() }, coldSamples: 100, warmSamples: 1000 }));
+const probe = new Database(':memory:');
+const sqlite = probe.prepare('SELECT sqlite_version() AS version').get() as { version: string };
+probe.close();
+console.log(JSON.stringify({ environment: { cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length,
+  memoryGiB: Number((os.totalmem() / 1024 ** 3).toFixed(1)), node: process.version, sqlite: sqlite.version,
+  os: os.platform(), kernel: os.release(), architecture: os.arch() }, indexingSamples: 5, lruClearedSamples: 100, warmSamples: 1000 }));
+
+function indexing(directory: string, body: string, sentences: number): void {
+  const initial: number[] = [], reindex: number[] = [];
+  for (let sample = 0; sample < 5; sample++) {
+    // Schema creation/DB open is outside timing. Each sample starts with an empty index.
+    const store = new SourceStore(path.join(directory, `indexing-${sample}.sqlite3`));
+    try {
+      const start = performance.now();
+      const results = [store.replace('a', 'a.txt', body), store.replace('b', 'b.txt', body)];
+      initial.push(performance.now() - start);
+      assert.deepEqual(results, ['imported', 'imported']);
+      const before = store.list();
+      assert.equal(before.length, 2);
+      assert.ok(before.every((source) => source.tokenCount === sentences * 3 && source.contentHash === hash(body)));
+      const reindexStart = performance.now();
+      for (const source of before) store.reindex(source.id);
+      reindex.push(performance.now() - reindexStart);
+      const after = store.list();
+      assert.deepEqual(after.map((source) => source.revision), before.map((source) => source.revision + 1));
+      assert.deepEqual(after.map((source) => [source.id, source.contentHash, source.tokenCount]),
+        before.map((source) => [source.id, source.contentHash, source.tokenCount]));
+      const engine = new PredictionEngine(store.predictionRepository());
+      assert.deepEqual(engine.predict({ prefix: 'wo', context: ['we', 'write'], sourceIds: after.map((source) => source.id), enabledN: [3] })
+        .candidates.map((candidate) => candidate.word), ['word0', 'word1', 'word10']);
+    } finally { store.close(); }
+  }
+  console.log(JSON.stringify({ kind: 'indexing', sourceCount: 2, tokens: sentences * 6, utf8Bytes: Buffer.byteLength(body) * 2,
+    initial: summary(initial), reindex: summary(reindex) }));
+}
 
 for (const sentences of [100, 5000]) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'typenudge-prediction-benchmark-'));
@@ -26,6 +61,7 @@ for (const sentences of [100, 5000]) {
   try {
     const body = Array.from({ length: sentences }, (_, i) => `we write word${i % 500}.`).join('\n');
     const original = hash(body);
+    indexing(directory, body, sentences);
     store.replace('synthetic-a', 'synthetic-a.txt', body);
     store.replace('synthetic-b', 'synthetic-b.txt', body);
     const sources = store.list();
@@ -42,6 +78,8 @@ for (const sentences of [100, 5000]) {
       const expected = engine.predict(item.request);
       assert.equal(expected.order, item.expectedOrder);
       assert.equal(expected.candidates.length, 3);
+      assert.deepEqual(expected.candidates.map((candidate) => candidate.word),
+        item.name === 'unigram' ? ['we', 'write', 'word0'] : ['word0', 'word1', 'word10']);
       const cold: number[] = [];
       for (let i = 0; i < 100; i++) {
         engine.clearCache();
@@ -59,7 +97,7 @@ for (const sentences of [100, 5000]) {
         assert.strictEqual(result, primed);
       }
       console.log(JSON.stringify({ sourceCount: sources.length, tokens: sentences * 3 * sources.length,
-        utf8Bytes: Buffer.byteLength(body) * sources.length, case: item.name, cold: summary(cold), warm: summary(warm),
+        utf8Bytes: Buffer.byteLength(body) * sources.length, case: item.name, lruCleared: summary(cold), warm: summary(warm),
         order: expected.order, candidates: expected.candidates.map((candidate) => candidate.word) }));
     }
     assert.equal(hash(body), original);

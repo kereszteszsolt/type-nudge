@@ -1,6 +1,6 @@
 # Testing and evidence plan
 
-TND-001–005 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001–006 have runnable checks and recorded available-environment evidence. Hosted CI and other native OS targets remain unverified. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
 
 ## Foundation checks
 
@@ -65,9 +65,9 @@ Thirteen real SQLite cases cover default-off/save-only behavior, unchanged saves
 
 The packaged suite adds real Save/Ctrl+S/Open/New/Delete/Remove learning/Reset flows, stored text/count inspections, no indexing on ordinary typing or opt-in alone, off-state saves removing prior counts, personal prefix suggestions/deactivation, restart persistence and unchanged imported data. It checks discard cancellation, per-document undo isolation and a real window-close attempt with Keep editing. Controlled test-only delayed Save/Open replies prove later typing is retained and dirty; a failed Save leaves a visible error and preserves text. These last fixture handlers do not commit data and are separate from the production SQLite persistence checks.
 
-## Later release test plan
+## Release coverage
 
-| Scope | Planned approach | Story |
+| Scope | Approach | Story |
 | --- | --- | --- |
 | Electron main/preload boundary | Mocked IPC input validation, no Node/SQLite access in renderer, deny unexpected filesystem requests | TND-001 |
 | Text ingestion/SQLite | Temp DBs, Unicode TXT/MD, safe limits, repeat import, per-source enable/delete/reindex | TND-002 |
@@ -76,9 +76,19 @@ The packaged suite adds real Save/Ctrl+S/Open/New/Delete/Remove learning/Reset f
 | Personal learning | Opt-in default off; save, resave without double count, disable learning and reset | TND-005 |
 | Desktop delivery | Vitest, Electron smoke, packaged app launch and native `better-sqlite3` DB open on each verified OS, CI | TND-006 |
 
+## CI and delivery checks (TND-006)
+
+`.github/workflows/checks.yml` runs on push, pull requests and manual dispatch. Its single Ubuntu 24.04 / Node 24.18.0 job runs `npm ci --no-fund`, `npm run typecheck` and `npm test`, with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`. It uses commit-pinned checkout/setup-node actions, read-only contents permission, disabled persisted git credentials, npm caching, a 15-minute timeout and cancellation of superseded runs. No GUI/native packaging matrix or publishing is claimed. Workflow YAML was parsed/reviewed and the commands passed in a fresh local temporary installation; hosted execution remains **Not run**. There is no separate lint command.
+
+For graphical verification, build/package before `npm run test:desktop`; use `TYPENUDGE_EXECUTABLE` for the real output executable. The TND-006 development run also checks all scenarios with a running `npm run dev` server. Do not package while dev is running, and rebuild after stopping dev before testing the production `.vite/build/main.js` entry. The packaged `out/` executable is an independent production copy.
+
+The package audit verifies native `.node` files are physically present under `app.asar.unpacked`, including `better-sqlite3/prebuilds/linux-x64.node`, the resource Apache license matches `LICENSE`, and generated bundled dependency notices include CodeMirror/MIT. The real packaged import/save/restart scenarios prove Electron opens and updates `typenudge.sqlite3` under its isolated `userData`; a Node-only DB open is insufficient evidence. Other shipped prebuild filenames do not establish other-platform runtime support.
+
 ## Performance checks
 
-Use reproducible small and medium corpora with documented word counts, number of sources, input prefix length, hardware and runtime. Capture warm/cold prediction latency and indexing time. Set sensible targets only after measuring a real application; **do not claim a benchmark or fast response from planned documentation**.
+`npm run benchmark:prediction` uses two synthetic `we write wordX.` sources at 600 and 30,000 total tokens, with at most 500 continuations. Five fresh temporary DBs measure first indexing and retained-copy reindexing of both sources. Timings include tokenization, hashes and SQLite writes/commits, excluding corpus construction, DB/schema creation, OS file selection/decoding and assertions. With five samples, reported indexing p95 is the maximum observed sample, not a stable population estimate.
+
+Each prediction case measures 100 LRU-cleared requests and 1,000 warm requests around the actual engine/repository call. Output uses `lruCleared` instead of the older `cold` label: SQLite/OS pages are not flushed. Validation, source metadata/cache access and SQL on misses are included; IPC, painting, startup, debounce and user typing are excluded. Expected N/top-three output and source immutability are asserted. The runner records CPU, logical CPUs, available memory, OS/kernel, Node and SQLite. Actual results and limitations are in TND-006 verification; no worst-case, quality or cross-platform guarantee is inferred.
 
 ## Recording rules
 

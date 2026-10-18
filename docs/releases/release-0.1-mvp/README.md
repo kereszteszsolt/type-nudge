@@ -1,6 +1,6 @@
 # Release 0.1 — Offline Predictive Writing MVP
 
-**Status:** In progress · **6 stories** · **TND-001–005 Implemented; TND-006 remains Planned.** See [verification](verification.md) for current evidence and platform limits.
+**Status:** Implemented and locally verified on **Linux x64/WSLg** · **6 stories implemented.** See [verification](verification.md) for commands, measurements and platform limits. Hosted GitHub Actions is Not run; installers, signing and publication are not provided.
 
 ## Goal
 

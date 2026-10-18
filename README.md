@@ -9,7 +9,7 @@
 
 **TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. Its plain-text CodeMirror editor suggests word completions and likely next words as subtle **ghost text**. Suggestions come from a lightweight, local **unigram/bigram/trigram** model indexed from imported text files and, with explicit consent, saved personal documents. No LLM or cloud API is used.
 
-> **Repository status: TND-001–005 implemented; Release 0.1 is in progress.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI and release delivery remain planned. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
 Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text.
 
@@ -17,7 +17,7 @@ Choose **Imported Texts**, **My Writing** or **Combined** above the editor and a
 
 Use **New**, give the document a name, then **Save**. **Documents** reopens/deletes saved notes and provides **Learn from my writing**, off by default. Enabling learning affects future explicit saves; it never indexes existing notes automatically. Saving while on replaces that note's counts, while saving with learning off removes its previous learned contribution. Turning learning off pauses personal predictions while retaining other learned counts. **Use**, **Remove learning** and **Reset personal learned data** control personal contributions independently; reset also turns learning off and keeps saved documents and imports. Storage is limited to 1 MiB per text, 100 combined sources/documents and 32 MiB total UTF-8 text.
 
-## Planned Release 0.1 — Offline Predictive Writing MVP
+## Release 0.1 — Offline Predictive Writing MVP
 
 - **Plain-text writing:** write in a CodeMirror 6 editor with unobtrusive inline (ghost-text) suggestions.
 - **Keyboard controls:** **Tab** accepts; **Alt + Down** cycles suggested continuations; **Esc** dismisses. Normal editor shortcuts must keep working when no suggestion exists.
@@ -27,7 +27,7 @@ Use **New**, give the document a name, then **Save**. **Documents** reopens/dele
 - **Local index:** per-source N-gram counts in a single SQLite file and a small in-memory LRU cache. Disabling a source never requires reindexing every other source.
 - **Privacy:** no accounts, global keystroke capture, telemetry, network-based prediction, Ollama, OpenRouter or model downloads.
 
-### What a user will do
+### Writing with TypeNudge
 
 1. Import one or more UTF-8 `.txt` or `.md` files (or start typing without imports).
 2. Choose active source files, enable or disable learning from saved writing, and select N=1/2/3 predictors.
@@ -84,7 +84,7 @@ A **prefix match** completes a partially typed word; a **word N-gram** predicts 
 
 [Storage and indexing](docs/indexing-and-storage.md) · [Prediction rules](docs/prediction-engine.md) · [Editor interactions](docs/editor-interactions.md).
 
-## Planned technology stack
+## Technology stack
 
 | Area | Technology |
 | --- | --- |
@@ -98,7 +98,7 @@ A **prefix match** completes a partially typed word; a **word N-gram** predicts 
 | Packaging | Electron Forge (platform-specific builds) |
 | Unit / integration tests | Vitest |
 | Desktop smoke checks | Playwright Electron support or an equivalent reproducible Electron harness |
-| Delivery | GitHub Actions for focused checks; packaging on supported OS runners |
+| Delivery checks | GitHub Actions for typecheck and unit/SQLite tests; local desktop packaging checks |
 
 The foundation pins Electron **44.9.0**, TypeScript **7.0.2**, Vite **8.3.4**, Forge **8.0.1**, CodeMirror 6 packages, Vitest **5.0.5**, Playwright **1.64.1**, and `better-sqlite3` **13.0.3** in `package.json` and `package-lock.json`. SQLite stays external to the main JS bundle; Forge retains the native dependency and unpacks its native files from ASAR. [Forge's Vite integration](https://www.electronforge.io/config/plugins/vite) remains experimental upstream, so upgrades require desktop checks. No backend server, Docker, React or LLM integration is planned.
 
@@ -123,17 +123,28 @@ npm run package       # builds the current platform's app directory under out/
 npm run test:desktop  # tests the built main/preload/renderer; run package first
 ```
 
-Desktop tests require a working graphical session and use temporary user data. To run the same checks against a packaged executable, set `TYPENUDGE_EXECUTABLE` to its absolute path (see [testing](docs/testing.md)). `package` produces an application directory, not an installer. Release installers, signing, cross-platform native delivery and CI remain TND-006 work. Windows and Linux remain target platforms; verified environments are listed separately in [release verification](docs/releases/release-0.1-mvp/verification.md).
+Desktop tests require a working graphical session and use temporary user data. The verified packaged target is **Linux x64 under WSLg / Ubuntu 26.04**. After `npm run package`, launch its application directory or run the same tests against its actual executable:
+
+```bash
+./out/TypeNudge-linux-x64/type-nudge
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```
+
+`package` creates an **unsigned application directory**, with native SQLite unpacked from ASAR and Apache/bundled dependency notices included. No installer, signing or publication is configured. Native Windows, macOS, Linux outside WSLg and other architectures remain **Not run**. See [verification](docs/releases/release-0.1-mvp/verification.md) for commands, GUI-library preparation and the platform evidence. Do not package concurrently with `dev`, which rewrites the same `.vite/` build directory.
+
+The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 24.04 to install the lockfile, typecheck and run unit/real SQLite tests. It skips the Electron binary download and does not run GUI, package or publish jobs. Actions are pinned to upstream commit IDs with read-only repository permissions. Its commands passed locally in a fresh temporary installation; **hosted GitHub Actions execution is Not run**. No separate lint configuration is present.
+
+`npm run benchmark:prediction` reports first indexing, retained-copy reindexing and LRU-cleared/warm prediction timings for two synthetic sources at 600 and 30,000 total tokens. Measurements include corpus sizes, CPU/runtime/SQLite versions and deterministic result checks. They exclude Electron IPC, rendering, file-picker/decoding and database-open time; they are local observations with a bounded vocabulary, not worst-case or end-to-end typing guarantees. Results are recorded in [verification](docs/releases/release-0.1-mvp/verification.md#tnd-006--2026-10-18).
 
 ## Development roadmap
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001–005 editor/index/suggestions/settings/documents/learning; release delivery remains planned |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–005 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All six stories; Linux x64/WSLg package and development checks, CI configuration and measured performance |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–006 evidence | Real commands, hardware, timings and platform/CI limits |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
-See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For GitHub metadata to apply **when the MVP is implemented**, see [About & Topics](docs/github-metadata.md).
+See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For suggested GitHub metadata, see [About & Topics](docs/github-metadata.md).
 
 Development follows [AGENTS.md](AGENTS.md) and the [story workflow](docs/story-workflow.md): one approved story at a time, relevant technology skills only, actual test evidence, and **separate approvals before implementation and git commit**. The optional worker agent is not an automatic parallel team.
 
