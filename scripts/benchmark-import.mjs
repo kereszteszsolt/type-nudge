@@ -18,7 +18,7 @@ await build({
 });
 
 // A fresh process per fixture keeps peak RSS independent of previous corpora/GC.
-for (const name of ['dense-500k', 'varied-500k', 'unique-125k', 'unique-250k', 'byte-limit']) {
+for (const name of ['repeated-500k', 'varied-500k', 'unique-500k', 'byte-limit']) {
   const result = spawnSync(process.execPath, [path.join(output, 'benchmark.cjs'), name], { cwd: root, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) {

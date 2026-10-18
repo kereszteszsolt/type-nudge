@@ -23,9 +23,9 @@ beforeEach(() => {
   personal.list.mockReturnValue({ learning: false, documents: [] });
   registerDocumentsIpc(() => window, entry, getStore);
 });
-it('exposes only bounded document and explicit consent operations', () => {
+it('exposes only bounded document and explicit consent operations', async () => {
   expect([...mocks.handlers.keys()]).toEqual(Object.values(channels));
-  expect(call(channels.list)).toEqual({ ok: true, value: { learning: false, documents: [] } });
+  expect(await call(channels.list)).toEqual({ ok: true, value: { learning: false, documents: [] } });
   const input = { id: null, revision: null, name: 'New', text: 'Árvíz\n日本語' };
   call(channels.save, input); expect(personal.save).toHaveBeenCalledExactlyOnceWith(input);
   call(channels.open, id); expect(personal.open).toHaveBeenCalledWith(id);
@@ -61,10 +61,10 @@ it('rejects malformed save payloads and arbitrary consent/source overrides befor
   }
   expect(getStore).not.toHaveBeenCalled();
 });
-it('sanitizes database failures while preserving actionable safe errors and allowing retry', () => {
+it('sanitizes database failures while preserving actionable safe errors and allowing retry', async () => {
   personal.list.mockImplementationOnce(() => { throw new Error('/private/note.sqlite3'); });
-  expect(call(channels.list)).toEqual({ ok: false, error: 'Could not update local documents. Please try again.' });
+  expect(await call(channels.list)).toEqual({ ok: false, error: 'Could not update local documents. Please try again.' });
   personal.save.mockImplementationOnce(() => { throw new SourceError('This document changed since it was opened.'); });
-  expect(call(channels.save, { id, revision: 1, name: 'Note', text: 'safe' })).toEqual({ ok: false, error: 'This document changed since it was opened.' });
-  expect(call(channels.list)).toMatchObject({ ok: true });
+  expect(await call(channels.save, { id, revision: 1, name: 'Note', text: 'safe' })).toEqual({ ok: false, error: 'This document changed since it was opened.' });
+  expect(await call(channels.list)).toMatchObject({ ok: true });
 });

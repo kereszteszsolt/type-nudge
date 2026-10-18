@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
+import { defaultNgramScales } from '../src/shared/prediction';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -18,24 +19,12 @@ interface Fixture { body: string; tokens: number; sentences: number; prefix: str
 function fixture(name: string): Fixture {
   const header = 'we write words.\n';
   const base = { prefix: 'wo', context: ['we', 'write'], next: 'words' };
-  if (name === 'dense-500k') return { body: 'word '.repeat(102_400), tokens: 102_400, sentences: 1,
-    prefix: 'wo', context: ['word', 'word'], next: 'word' };
-  if (name === 'varied-500k') {
-    const words: string[] = [];
-    let seed = 42, bytes = Buffer.byteLength(header);
-    while (true) {
-      seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
-      const word = `szó${((seed >>> 16) % 4096).toString(36)} `;
-      const size = Buffer.byteLength(word);
-      if (bytes + size > 512_000) break;
-      words.push(word); bytes += size;
-    }
-    return { ...base, prefix: 'szó', body: header + words.join('') + ' '.repeat(512_000 - bytes), tokens: words.length + 3, sentences: 2 };
-  }
-  if (name === 'unique-125k' || name === 'unique-250k') {
-    const tokens = name === 'unique-125k' ? 125_000 : 250_000;
-    return { ...base, prefix: 'token', tokens, sentences: 2,
-      body: header + Array.from({ length: tokens - 3 }, (_, index) => `token${String(index).padStart(6, '0')}`).join(' ') };
+  if (name === 'repeated-500k') return { body: 'word '.repeat(500_000), tokens: 500_000, sentences: 1,
+    prefix: 'wo', context: Array(6).fill('word'), next: 'word' };
+  if (name === 'varied-500k' || name === 'unique-500k') {
+    const tokens = 500_000;
+    const body = Array.from({length:tokens},(_,i)=>'w'+(name==='varied-500k' ? (i*31+i*i)%4096 : i).toString(36)).join(' ');
+    return {body,tokens,sentences:1,prefix:'w',context:body.split(' ').slice(0,6),next:body.split(' ')[6]!};
   }
   if (name === 'byte-limit') return { ...base, tokens: 3, sentences: 1,
     body: header + ' '.repeat(importLimits.fileBytes - Buffer.byteLength(header)) };
@@ -70,7 +59,7 @@ async function main(): Promise<void> {
       .all() as { n: number; rows: number; total: number }[];
     const initialStats = stats();
     assert.deepEqual(initialStats.map(({ n, total }) => [n, total]),
-      [1, 2, 3].map((n) => [n, input.tokens - input.sentences * (n - 1)]));
+      Array.from({length:Math.min(7,input.tokens)},(_,i)=>i+1).map((n) => [n, input.tokens - input.sentences * (n - 1)]));
 
     const repeatedStart = performance.now();
     const repeated = await importSelectedFiles([selected], store);
@@ -88,21 +77,21 @@ async function main(): Promise<void> {
 
     const engine = new PredictionEngine(store.predictionRepository());
     const predictions: Record<string, { samples: number; medianMs: number; maxMs: number }> = {};
-    for (const n of [1, 3] as const) {
+    for (const previewWords of [1, 3, 10]) {
       const samples: number[] = [];
       for (let index = 0; index < 5; index++) {
         engine.clearCache();
         const start = performance.now();
-        const result = engine.predict({ sourceIds: [reindexed.id], enabledN: [n],
-          prefix: n === 1 ? input.prefix : 'wo', context: n === 1 ? [] : input.context });
-        samples.push(performance.now() - start);
-        assert.equal(result.order, n);
-        assert.ok(result.candidates.length > 0 && result.candidates.length <= 3);
-        if (n === 3) assert.deepEqual(result.candidates.map((candidate) => candidate.word), [input.next]);
+        const result = engine.predict({ngramScales:defaultNgramScales, sourceIds:[reindexed.id],maxN:7,poolSize:10,previewWords,
+          prefix:input.prefix,context:input.context });
+        samples.push(performance.now()-start);
+        assert.ok(result.words.length>0 && result.words.length<=previewWords);
+        assert.ok(result.candidates.length>0 && result.candidates.length<=10);
       }
-      samples.sort((a, b) => a - b);
-      predictions[`N${n}`] = { samples: samples.length, medianMs: rounded(samples[2]!), maxMs: rounded(samples[4]!) };
+      samples.sort((a,b)=>a-b);
+      predictions[`N1-7_preview${previewWords}`]={samples:samples.length,medianMs:rounded(samples[2]!),maxMs:rounded(samples[4]!)};
     }
+    const walBytes = (()=>{try{return statSync(database+'-wal').size;}catch{return 0;}})();
     assert.deepEqual(store.list(), [reindexed]);
     assert.equal(hash(readFileSync(selected)), originalHash);
     inspection.close();
@@ -111,7 +100,7 @@ async function main(): Promise<void> {
       arch: os.arch(), cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: rounded(os.totalmem() / 1024 ** 3) },
       limits: importLimits, tokens: input.tokens, utf8Bytes: Buffer.byteLength(input.body), ngrams: initialStats,
       importMs: rounded(importMs), unchangedMs: rounded(unchangedMs), reindexMs: rounded(reindexMs),
-      peakRssMiB: rounded(process.resourceUsage().maxRSS / 1024), databaseBytes: statSync(database).size, predictions }));
+      peakRssMiB: rounded(process.resourceUsage().maxRSS / 1024), databaseBytes: statSync(database).size, walBytes, predictions }));
   } finally {
     if (inspection.open) inspection.close();
     store.close();

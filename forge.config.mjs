@@ -16,6 +16,7 @@ export default {
   plugins: [new AutoUnpackNativesPlugin({}), new VitePlugin({
     build: [
       { entry: 'src/main/index.ts', config: 'vite.main.config.mjs', target: 'main' },
+      { entry: 'src/main/storage/worker.ts', config: 'vite.worker.config.mjs', target: 'main' },
       { entry: 'src/preload.ts', config: 'vite.preload.config.mjs', target: 'preload' },
     ],
     renderer: [{ name: 'main_window', config: 'vite.renderer.config.mjs' }],

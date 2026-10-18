@@ -5,11 +5,9 @@ import { dialog, ipcMain, type BrowserWindow } from 'electron';
 import { sourceChannels, type SourceResult, type ImportReport } from '../shared/sources';
 import { assertTrustedSender } from './ipc-sender';
 import { SourceError, sourceErrorMessage } from './storage/errors';
-import { importSelectedFiles } from './storage/import';
-import type { SourceStore } from './storage/store';
-import { clearUnavailableSource, listSourceFiles } from './storage/source-files';
+import type { StoreAccess } from './storage/access';
 
-export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => SourceStore): void {
+export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => StoreAccess): void {
   let busy = false;
   async function result<T>(operation: () => T | Promise<T>): Promise<SourceResult<T>> {
     try { return { ok: true, value: await operation() }; }
@@ -21,11 +19,13 @@ export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry:
     try { return await operation(); } finally { busy = false; }
   }
 
-  for (const channel of [sourceChannels.list, sourceChannels.checkFiles]) {
+  for (const channel of [sourceChannels.list, sourceChannels.progress, sourceChannels.storage, sourceChannels.checkFiles]) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
       assertTrustedSender(event, getWindow(), entry);
       if (args.length !== 0) throw new Error('List/check sources takes no arguments.');
-      return result(() => channel === sourceChannels.list ? getStore().list() : listSourceFiles(getStore()));
+      return result(async () => channel === sourceChannels.progress ? getStore().progress?.() ?? { words: 0, active: false } :
+        channel === sourceChannels.storage ? getStore().storageUsage() :
+        channel === sourceChannels.list ? getStore().list() : getStore().checkFiles());
     });
   }
   ipcMain.handle(sourceChannels.import, (event, ...args: unknown[]) => {
@@ -41,13 +41,13 @@ export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry:
       if (selection.canceled || selection.filePaths.length === 0) {
         return { imported: 0, unchanged: 0, canceled: true, errors: [] };
       }
-      return importSelectedFiles(selection.filePaths, getStore());
+      return getStore().importFiles(selection.filePaths);
     }));
   });
   for (const [channel, action] of [
-    [sourceChannels.reindex, (store: SourceStore, id: string) => store.reindex(id)],
-    [sourceChannels.delete, (store: SourceStore, id: string) => store.delete(id)],
-    [sourceChannels.clearUnavailable, (store: SourceStore, id: string) => clearUnavailableSource(store, id)],
+    [sourceChannels.reindex, (store: StoreAccess, id: string) => store.reindex(id)],
+    [sourceChannels.delete, (store: StoreAccess, id: string) => store.delete(id)],
+    [sourceChannels.clearUnavailable, (store: StoreAccess, id: string) => store.clearUnavailable(id)],
   ] as const) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
       assertTrustedSender(event, getWindow(), entry);

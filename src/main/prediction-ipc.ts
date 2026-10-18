@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ipcMain, type BrowserWindow } from 'electron';
-import { predictionChannels, validatePredictionSettings } from '../shared/prediction';
+import { defaultNgramScales, predictionChannels, validatePredictionSettings } from '../shared/prediction';
 import type { SourceResult } from '../shared/sources';
 import { assertTrustedSender } from './ipc-sender';
-import { PredictionEngine } from './prediction/engine';
 import { normalizePredictionRequest } from './prediction/request';
-import type { SourceStore } from './storage/store';
+import type { StoreAccess } from './storage/access';
 
-export function registerPredictionIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => SourceStore): void {
-  let engine: PredictionEngine | undefined;
-  function result<T>(operation: () => T): SourceResult<T> {
-    try { return { ok: true, value: operation() }; }
+export function registerPredictionIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => StoreAccess): void {
+  async function result<T>(operation: () => T | Promise<T>): Promise<SourceResult<T>> {
+    try { return { ok: true, value: await operation() }; }
     catch { return { ok: false, error: 'Could not load local predictions. Please try again.' }; }
   }
   ipcMain.handle(predictionChannels.settings, (event, ...args: unknown[]) => {
@@ -24,23 +22,15 @@ export function registerPredictionIpc(getWindow: () => BrowserWindow | null, ent
     assertTrustedSender(event, getWindow(), entry);
     if (args.length !== 1) throw new Error('Provide one settings object.');
     const settings = validatePredictionSettings(args[0]);
-    return result(() => {
-      const saved = getStore().setPredictionSettings(settings);
-      engine?.clearCache();
-      return saved;
-    });
+    return result(() => getStore().setPredictionSettings(settings));
   });
   ipcMain.handle(predictionChannels.predict, (event, ...args: unknown[]) => {
     assertTrustedSender(event, getWindow(), entry);
     const input = args[0];
     if (args.length !== 1 || !input || typeof input !== 'object' || Array.isArray(input) ||
-        Object.keys(input).some((key) => !['prefix', 'context'].includes(key))) throw new Error('Provide one prefix/context object.');
-    const request = normalizePredictionRequest({ ...input, sourceIds: [], enabledN: [1] });
-    return result(() => {
-      const store = getStore();
-      const settings = store.getPredictionSettings();
-      engine ??= new PredictionEngine(store.predictionRepository());
-      return engine.predict({ ...request, sourceIds: store.predictionSourceIds(settings.sourceMode), enabledN: settings.enabledN });
-    });
+        Object.keys(input).some((key) => !['prefix', 'context', 'avoidWord'].includes(key))) throw new Error('Provide one prefix/context object.');
+    const request = normalizePredictionRequest({ ...input, sourceIds: [], maxN: 1, poolSize: 1, previewWords: 1, ngramScales: defaultNgramScales });
+    return result(() => getStore().predict({ prefix: request.prefix, context: request.context,
+      ...(request.avoidWord === undefined ? {} : { avoidWord: request.avoidWord }) }));
   });
 }

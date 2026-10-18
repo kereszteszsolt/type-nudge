@@ -6,11 +6,11 @@ import { documentChannels as channels, documentId, validateSaveDocument } from '
 import type { SourceResult } from '../shared/sources';
 import { assertTrustedSender } from './ipc-sender';
 import { SourceError } from './storage/errors';
-import type { SourceStore } from './storage/store';
+import type { StoreAccess } from './storage/access';
 
-export function registerDocumentsIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => SourceStore): void {
-  function result<T>(operation: () => T): SourceResult<T> {
-    try { return { ok: true, value: operation() }; }
+export function registerDocumentsIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => StoreAccess): void {
+  async function result<T>(operation: () => T | Promise<T>): Promise<SourceResult<T>> {
+    try { return { ok: true, value: await operation() }; }
     catch (error) { return { ok: false, error: error instanceof SourceError ? error.message : 'Could not update local documents. Please try again.' }; }
   }
   for (const channel of Object.values(channels)) ipcMain.handle(channel, (event, ...args: unknown[]) => {

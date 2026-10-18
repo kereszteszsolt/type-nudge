@@ -22,10 +22,10 @@ export function predictionContext(state: EditorState): PredictionInput | null {
     if (separator === -1) return null;
     text = text.slice(separator + 1);
   }
-  text = text.split(/[.!?。！？;:]/u).at(-1)!;
+  text = text.split(/[.!?。！？;:\u2028\u2029]/u).at(-1)!;
   const prefix = text.match(fragment)?.[0] ?? '';
   if (prefix.length > 256 || [...prefix.normalize('NFC')].length > 128 || (prefix && !partialWord.test(prefix))) return null;
-  const context = [...text.slice(0, text.length - prefix.length).matchAll(token)].slice(-2).map((match) => match[0]);
+  const context = [...text.slice(0, text.length - prefix.length).matchAll(token)].slice(-6).map((match) => match[0]);
   if (context.some((word) => word.length > 256 || [...word.normalize('NFC')].length > 128)) return null;
   return { prefix, context };
 }

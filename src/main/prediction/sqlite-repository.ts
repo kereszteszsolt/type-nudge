@@ -17,7 +17,7 @@ const rankSql = `SELECT g.next_token AS word, MIN(g.display_token COLLATE BINARY
     AND g.next_token > @prefix AND g.next_token < @upper
   GROUP BY g.next_token COLLATE BINARY
   ORDER BY frequency DESC, g.next_token COLLATE BINARY ASC
-  LIMIT 3`;
+  LIMIT @limit`;
 
 export class SqlitePredictionRepository implements PredictionRepository {
   private readonly sources: Database.Statement;
@@ -42,8 +42,8 @@ export class SqlitePredictionRepository implements PredictionRepository {
         indexRevision,
         sourceFingerprint: JSON.stringify(states),
         activeSourceIds,
-        select: (n, context, prefix) => this.rank.all({
-          sourceIds: JSON.stringify(activeSourceIds), n, context, prefix, upper: prefixUpperBound(prefix),
+        select: (n, context, prefix, limit) => this.rank.all({
+          sourceIds: JSON.stringify(activeSourceIds), n, context, prefix, limit, upper: prefixUpperBound(prefix),
         }) as PredictionCandidate[],
       });
     })();

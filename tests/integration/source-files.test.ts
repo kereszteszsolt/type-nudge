@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
+import { defaultNgramScales } from '../../src/shared/prediction';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { downgradeToV3 } from '../fixtures/schema-v3';
 import { SourceStore } from '../../src/main/storage/store';
 import { importSelectedFiles } from '../../src/main/storage/import';
 import { clearUnavailableSource, listSourceFiles } from '../../src/main/storage/source-files';
@@ -43,8 +45,8 @@ it('clears only an unavailable indexed import, cascading all local contributions
   const note = store.personal.save({ id: null, revision: null, name: 'Note', text: 'personal words preserved' });
   const otherCounts = counts(other.source.id), personalCounts = counts(personalSource(note.id));
   const engine = new PredictionEngine(store.predictionRepository());
-  const request = { prefix: 'on', context: [], enabledN: [1] as const, sourceIds: [source.id, other.source.id] };
-  expect(engine.predict({ ...request, enabledN: [1] }).candidates.map((item) => item.word)).toEqual(['onlysource']);
+  const request = { ngramScales:defaultNgramScales, prefix: 'on', context: [], maxN: 1 as const, poolSize:3, previewWords:1, sourceIds: [source.id, other.source.id] };
+  expect(engine.predict({ ...request, maxN: 1 }).candidates.map((item) => item.word)).toEqual(['onlysource']);
   await rm(selected);
   expect((await listSourceFiles(store)).find((item) => item.id === source.id)).toMatchObject({ fileStatus: 'missing', hasIndex: true });
   const before = Number(revision());
@@ -53,7 +55,7 @@ it('clears only an unavailable indexed import, cascading all local contributions
   for (const table of ['sources', 'documents', 'ngrams', 'imported_files']) {
     expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${table === 'sources' ? 'id' : 'source_id'} = ?`).get(source.id)).toEqual({ count: 0 });
   }
-  expect(engine.predict({ ...request, enabledN: [1] }).candidates).toEqual([]);
+  expect(engine.predict({ ...request, maxN: 1 }).candidates).toEqual([]);
   expect(counts(other.source.id)).toEqual(otherCounts); expect(counts(personalSource(note.id))).toEqual(personalCounts);
   expect(store.personal.open(note.id).text).toBe('personal words preserved');
   expect(await readFile(other.selected, 'utf8')).toBe('remaining text source');
@@ -71,17 +73,18 @@ it('refuses cleanup if a file is readable or was restored after the list was che
 });
 
 it('migrates schema 2 losslessly and backfills unknown locations on an unchanged explicit reimport', async () => {
-  const { selected, source } = await imported();
+  const { selected, source } = await imported(); source.indexMaxN=3;
   store.personal.setLearning(true);
   const note = store.personal.save({ id: null, revision: null, name: 'Note', text: 'saved personal text' });
   const before = counts(source.id), personalCounts = counts(personalSource(note.id)), indexRevision = revision();
+  downgradeToV3(db);
   db.exec('DROP TABLE imported_files; PRAGMA user_version = 2;');
   store.close(); store = new SourceStore(filename);
-  expect(db.pragma('user_version', { simple: true })).toBe(3);
+  expect(db.pragma('user_version', { simple: true })).toBe(5);
   expect(await listSourceFiles(store)).toEqual([{ ...source, fileStatus: 'unknown', hasIndex: true }]);
   await expect(clearUnavailableSource(store, source.id)).rejects.toThrow('original file is unavailable');
-  expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 0, unchanged: 1, errors: [] });
-  expect(store.list()).toEqual([source]); expect(counts(source.id)).toEqual(before); expect(revision()).toBe(indexRevision);
+  expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 1, unchanged: 0, errors: [] });
+  expect(store.list()).toEqual([{...source,indexMaxN:7,revision:source.revision+1,updatedAt:expect.any(String)}]); expect(counts(source.id)).toEqual(before); expect(Number(revision())).toBe(Number(indexRevision)+1);
   expect(counts(personalSource(note.id))).toEqual(personalCounts); expect(store.personal.open(note.id)).toMatchObject({ text: 'saved personal text' });
   expect((await listSourceFiles(store))[0]!.fileStatus).toBe('available');
 });

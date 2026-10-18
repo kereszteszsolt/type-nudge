@@ -2,7 +2,7 @@
 
 The following are **ideas only**: no release, story, implementation approval or acceptance criteria has been assigned.
 
-Word N=4–7 has moved into the user-requested [TND-007](releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) specification. That story is **Planned**; extended N is not part of the current executable or an unassigned experiment below.
+Word N=4–7 has moved into the user-requested [TND-007](releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) implementation. That story is **Implemented**; extended N is part of the current executable rather than an unassigned experiment below.
 
 - **Character N-grams:** optionally compare character-level and word-level completion.
 - **Language profiles:** easier separation of Hungarian, English and other imported corpora without automatic remote detection.

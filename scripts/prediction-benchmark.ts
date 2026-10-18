@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
+import { defaultNgramScales } from '../src/shared/prediction';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { performance } from 'node:perf_hooks';
 import Database from 'better-sqlite3';
 import { SourceStore } from '../src/main/storage/store';
 import { PredictionEngine } from '../src/main/prediction/engine';
-import type { NgramOrder, PredictionRequest } from '../src/main/prediction/types';
+import type { PredictionRequest } from '../src/main/prediction/types';
 
 function summary(samples: number[]): { medianMs: number; p95Ms: number } {
   const sorted = [...samples].sort((a, b) => a - b);
@@ -46,8 +47,8 @@ function indexing(directory: string, body: string, sentences: number): void {
       assert.deepEqual(after.map((source) => source.revision), before.map((source) => source.revision + 1));
       assert.deepEqual(after.map((source) => [source.id, source.contentHash, source.tokenCount]),
         before.map((source) => [source.id, source.contentHash, source.tokenCount]));
-      const engine = new PredictionEngine(store.predictionRepository());
-      assert.deepEqual(engine.predict({ prefix: 'wo', context: ['we', 'write'], sourceIds: after.map((source) => source.id), enabledN: [3] })
+      const engine = new PredictionEngine(store.predictionRepository(),128,()=>0);
+      assert.deepEqual(engine.predict({ngramScales:defaultNgramScales, prefix: 'wo', context: ['we', 'write'], sourceIds: after.map((source) => source.id), maxN:7, poolSize:3, previewWords:3 })
         .candidates.map((candidate) => candidate.word), ['word0', 'word1', 'word10']);
     } finally { store.close(); }
   }
@@ -65,18 +66,17 @@ for (const sentences of [100, 5000]) {
     store.replace('synthetic-a', 'synthetic-a.txt', body);
     store.replace('synthetic-b', 'synthetic-b.txt', body);
     const sources = store.list();
-    const engine = new PredictionEngine(store.predictionRepository());
-    const base: PredictionRequest = { prefix: '', context: [], sourceIds: sources.map((source) => source.id), enabledN: [1, 2, 3] };
-    const cases: { name: string; request: PredictionRequest; expectedOrder: NgramOrder }[] = [
-      { name: 'unigram', request: base, expectedOrder: 1 },
-      { name: 'prefix', request: { ...base, prefix: 'wo' }, expectedOrder: 1 },
-      { name: 'bigram', request: { ...base, prefix: 'wo', context: ['write'] }, expectedOrder: 2 },
-      { name: 'trigram', request: { ...base, prefix: 'wo', context: ['we', 'write'] }, expectedOrder: 3 },
-      { name: 'enabled-only-backoff', request: { ...base, prefix: 'wo', context: ['missing', 'write'], enabledN: [1, 3] }, expectedOrder: 1 },
+    const engine = new PredictionEngine(store.predictionRepository(),128,()=>0);
+    const base: PredictionRequest = { ngramScales:defaultNgramScales, prefix: '', context: [], sourceIds: sources.map((source) => source.id), maxN:7, poolSize:3, previewWords:3 };
+    const cases: { name: string; request: PredictionRequest }[] = [
+      { name: 'unigram', request: base },
+      { name: 'prefix', request: { ...base, prefix: 'wo' } },
+      { name: 'bigram', request: { ...base, prefix: 'wo', context: ['write'] } },
+      { name: 'trigram', request: { ...base, prefix: 'wo', context: ['we', 'write'] } },
+      { name: 'all-usable-orders', request: { ...base, prefix: 'wo', context: ['missing', 'write'], maxN:3 } },
     ];
     for (const item of cases) {
       const expected = engine.predict(item.request);
-      assert.equal(expected.order, item.expectedOrder);
       assert.equal(expected.candidates.length, 3);
       assert.deepEqual(expected.candidates.map((candidate) => candidate.word),
         item.name === 'unigram' ? ['we', 'write', 'word0'] : ['word0', 'word1', 'word10']);
@@ -94,11 +94,11 @@ for (const sentences of [100, 5000]) {
         const start = performance.now();
         const result = engine.predict(item.request);
         warm.push(performance.now() - start);
-        assert.strictEqual(result, primed);
+        assert.strictEqual(result.candidates, primed.candidates);
       }
       console.log(JSON.stringify({ sourceCount: sources.length, tokens: sentences * 3 * sources.length,
         utf8Bytes: Buffer.byteLength(body) * sources.length, case: item.name, lruCleared: summary(cold), warm: summary(warm),
-        order: expected.order, candidates: expected.candidates.map((candidate) => candidate.word) }));
+        maximumN: item.request.maxN, previewWords: item.request.previewWords, candidates: expected.candidates.map((candidate) => candidate.word) }));
     }
     assert.equal(hash(body), original);
     assert.deepEqual(store.list(), sources);

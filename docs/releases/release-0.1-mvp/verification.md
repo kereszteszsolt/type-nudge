@@ -639,3 +639,157 @@ The user revised the planned selection policy: every usable N contributes its ow
 Added [the full pool guide](../../prediction-pool.md), linked from the story, README and current prediction documentation. It defines source eligibility, context suffixes, prefix matching, both top-X cutoffs, raw-score formula, weighted probability, deterministic ties, a worked X=2 example, empty/short-context cases, multi-word virtual rollout and snapshot/cache boundaries. It explicitly notes that raw summation lets higher-N evidence add score but cannot guarantee that every rare higher-N-only candidate survives the final cutoff. Story acceptance criteria and planning summaries were updated to match. This remains documentation only; application tests/benchmarks and packaging are Not run for the revised algorithm.
 
 Documentation checks for this clarification passed: `git diff --check`; a local Python link/scope check over nine Markdown-only files (58 resolved relative links, README Mermaid/license/support sections preserved, Git index empty); and arithmetic checks for the guide's per-N pools, merged scores `alma:18, szilva:12, körte:10`, final top-two probabilities 60%/40%, and the rare-candidate cutoff counterexample. These are specification/example checks, not runtime prediction or benchmark results.
+
+
+## TND-007 — Implementation, 2026-10-18
+
+Implementation was approved after specification commit `84d7ed3`. The source now contains contiguous N=1–7, query-time combination of eligible sources, per-N top-X / admitted-score merge / final top-X weighted sampling, virtual multi-word rollout, one/K/all acceptance, hidden Settings and Help, and a 500,000-word bound with unchanged byte/source/storage limits. The [pool guide](../../prediction-pool.md) describes the complete formulas, example, cutoffs, sampling and limitations.
+
+### Storage, migration and responsiveness
+
+Schema 4 transactionally replaces the N<=3 constraint with N<=7 and preserves prior counts, imported-file locations, personal notes, consent and activation. Sparse old N choices become contiguous through their maximum. `index_max_n` marks retained N<=3 contributions; Sources → Reindex explicitly upgrades a retained copy, and an unchanged already learned note upgrades only on a consented Save. Unrelated unlearned notes stay unlearned.
+
+One local worker owns SQLite and serializes all operations. Its indexer keeps six context words and flushes at 4,096 distinct rows or 4,096 processed words; it never builds a full-corpus all-N Map. Source/body/count/coverage/revision replacement is one transaction. Main bounds its wait queue to 32, coalesces obsolete queued predictions and serves numeric progress without waiting behind indexing. A real worker test interrupts a 500,000-word replacement after progress, reads the previous committed text from another connection, restarts storage, verifies the unchanged source/index, and then successfully replaces it. Renderer and main request handling continue while indexing.
+
+Per-N SQL pools and merged pools share one 128-entry LRU. Each sequence uses a single read snapshot. This lets later positions reuse unchanged unigrams/shorter suffixes without caching a random sentence or altering the requested scores. The measured unique-vocabulary ten-word probe motivated this change: the earlier implementation measured 3,219.41 ms median; the final pool-cache run measured 636.63 ms. These are local observations, not a controlled statistical speedup claim or an end-to-end latency guarantee.
+
+### Environment and commands
+
+Windows: native x64, Node 24.18.0 with the existing pinned Windows dependencies. Linux: fresh isolated `/tmp/typenudge-tnd007-linux` installation under Ubuntu/WSL2/WSLg x64, Node 24.18.0, kernel `6.6.87.2-microsoft-standard-WSL2`. Electron 44.9.0, better-sqlite3 13.0.3, SQLite 3.53.4. Benchmark hardware: AMD Ryzen 9 3900X, 24 logical CPUs, 31.3 GiB visible RAM. No real user corpus/profile was opened or migrated for checks.
+
+Commands included `npm run typecheck`, focused `vitest run` files before full `npm test`, `npm run package`, both benchmark scripts, and `npm run test:desktop -- --max-failures=1` with `TYPENUDGE_EXECUTABLE` set to the actual package. Windows invoked the installed `node.exe` with TypeScript/Vitest/Playwright entrypoints, plus Forge's `api.package({dir, outDir, interactive:false})` to keep staging under ignored `.cache/tnd007/` until verified. Linux installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --offline --cache /tmp/type-nudge-npm-cache --no-fund` (183 packages, audit reported 0 vulnerabilities at that time).
+
+The WSL checkout's root dependencies contain Windows tools, so Linux checks used their own installation. Linux Forge's initial download attempt failed; the fixture alone used `packagerConfig.electronZipDir` pointing at the existing Electron 44.9.0 Linux ZIP cache, with no shipped configuration/dependency change. An initial direct Forge API probe omitted its resolved plugin interface; normal config resolution was retained for the actual package. Linux GUI runs use `LD_LIBRARY_PATH=/tmp/type-nudge-linux-deps/extracted/usr/lib/x86_64-linux-gnu`. The outer command sandbox initially denied Chromium's sandbox-host system call; the graphical command was rerun outside that outer restriction while keeping Chromium sandboxing enabled and verified. No `--no-sandbox` workaround was used.
+
+### Correctness and packaged results
+
+- Final typechecks and full unit/real-SQLite/worker suites: **233/233 in 16 files on Windows and Linux**. Times: 11.63 s Windows / 8.19 s Linux.
+- Focused coverage includes all seven orders, aggregate-before-LIMIT, 7+4=11, the exact 18/12 mixture and RNG 0.6 boundary, omitted counts, BINARY ties, prefix/Unicode/sentence boundaries, virtual context per position, singleton/alternate behavior, immutable bounded caches, settings validation/rollback, migrations and scoped N=1–7 deletion.
+- IPC/preload tests preserve narrow named calls and reject untrusted frames, renderer paths/SQL/source/N/pool/consent injection, malformed Unicode and invalid numeric bounds. Source availability/conditional Clear index and all consent/save/delete/reset regressions remain covered.
+- Windows final-package desktop suite: **16/16 passed in 1.7 minutes**, native Windows x64; large-import case 1.3 minutes..
+- Linux final-package desktop suite: **16/16 passed in 1.1 minutes**, Linux x64 under WSL2/Xvfb; large-import case 52.1 seconds..
+- Final-location Windows smoke: **2/2 passed in 5.1 seconds** from `out/TypeNudge-win32-x64/type-nudge.exe`, including real combined pools/acceptance and source-cleanup/restart with isolated profiles..
+
+The complete desktop suite checks real import/SQLite/restart; prefix/next-word completion; one/K/all acceptance and remaining words; isolated undo/copy; Alt+Down alternatives/singletons; delayed IPC, source/settings/selection/composition invalidation; save/open/discard/learning; native focus restoration; hidden Settings/Help and 520×480 layouts; renderer isolation/CSP/sandbox; and source cleanup. The dedicated control fixture also checks that a Unicode paragraph separator clears prior context. During the 500,000-word packaged import, it types in the editor, checks a main-process IPC reply and observes progress/heartbeat before verifying committed bodies/hashes/all-N counts, unchanged reimport and retained-copy reindex.
+
+Interim checks found an actual delayed `close` listener stealing editor focus after leaving Settings; it was removed in favor of native dialog focus restoration. Screenshot review also showed that focusing Close initially scrolled small dialogs past their primary controls; initial focus now goes to each heading, with viewport assertions. Legacy tests were updated for randomness/mixed orders and new bounds; a stale locator after application restart and duplicate artificial change events were corrected in the test helper. One synthetic large-import run waited at the real unsaved-change guard during an intentional reload; its exact staging executable was stopped, and the fixture now explicitly discards its own unsaved text before reload. An ASAR audit probe needed native Windows path separators. No application assertion was skipped to obtain a pass.
+
+Two WSLg graphical attempts received unexpected input: `A sec ond lineminde` instead of `A second line`, and a whole-page clipboard containing `we write woj` instead of the expected completed word. The cause was not established. A fresh intermediate run on unchanged package/test bytes passed all 16 checks, but another final WSLg run reproduced the discrepancy. These traces are retained as a shared-display input reliability limitation, not evidence of a fixed application defect.
+
+Final Linux keyboard checks therefore use an isolated **Xvfb** X11 display under WSL2, with the same packaged application and unchanged assertions. Official Ubuntu `xvfb`, `xserver-common`, `x11-xkb-utils`, `libxfont2`, `libunwind8`, `libfontenc1` and `libxkbfile1` packages were downloaded/extracted only into `/tmp/typenudge-tnd007-xvfb`; no system package installation or application dependency change was made. The temporary Xvfb binary's one NUL-terminated `/usr/bin` helper path was relocated to same-length `/tmp/tn7`, containing the extracted `xkbcomp`, so no system binary needed replacing. The X server warned about its unavailable filesystem socket on WSLg's mounted `/tmp/.X11-unix` and used its separate abstract socket. No WSLg socket permissions were changed.
+
+The command unsets `WAYLAND_DISPLAY`, prepends the extracted tool directory to PATH, supplies the extracted X11/GUI library paths, and runs `xvfb-run -a --server-args='-screen 0 1280x900x24 -nolisten tcp' npm run test:desktop -- --max-failures=1` with the actual package in `TYPENUDGE_EXECUTABLE`. Chromium sandbox/seccomp checks remain active. This proves packaged Linux behavior in an isolated virtual display; physical WSLg keyboard input remains separately limited by the observed discrepancies.
+
+### Measured large corpora
+
+`npm run benchmark:import` passed all four fixtures in fresh Node processes/databases. Each verifies full retained text/hash/bytes, all N=1–7 counts, unchanged reimport and transactional retained-copy reindex. The exact 5 MiB fixture has three words; it tests bytes, not a large vocabulary. The unique fixture contains **3,499,979 distinct N-gram rows**. Subsequent renderer-only Unicode boundary alignment does not change the benchmarked indexer, SQL, cache or fixture bytes.
+
+| Fixture | Words / UTF-8 bytes | Import / reindex ms | Peak RSS MiB | SQLite / observed WAL MiB | Preview 1 / 3 / 10 median ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| repeated-500k | 500,000 / 2,500,000 | 2,022.52 / 1,857.24 | 101.31 | 2.45 / 2.56 | 0.57 / 0.91 / 1.17 |
+| varied-500k | 500,000 / 2,337,388 | 14,186.09 / 13,670.77 | 264.94 | 6.62 / 6.74 | 2.36 / 3.58 / 5.41 |
+| unique-500k | 500,000 / 2,952,011 | 19,687.25 / 26,281.90 | 231.99 | 576.62 / 580.07 | 320.41 / 640.91 / 636.63 |
+| byte-limit | 3 / 5,242,880 | 101.86 / 35.27 | 117.84 | 5.07 / 5.18 | 0.45 / 0.71 / 2.02 |
+
+Prediction columns are medians of five LRU-cleared all-usable-N requests at X=10; within each sequence shorter pools may be reused. SQLite/OS pages were not flushed. Observed WAL size is taken before closing/checkpoint cleanup, not a guaranteed peak bound. Peak RSS includes fixture creation, assertions and all operations in that Node process, excluding separate Electron renderer/GPU processes. One import/reindex sample per fixture and five probes do not establish stable population percentiles or worst-case limits. The 32 MiB retained-text cap does not cap derived SQLite/WAL storage; a source near the word cap can need substantial disk space.
+
+`npm run benchmark:prediction` also passed. For two sources / 30,000 words / X=3 / preview=3 / maxN=7, initial indexing median was 75.913 ms and reindex median 81.8873 ms across five fresh databases. The two-word-context/prefix case measured 2.3958 ms median / 2.7512 ms p95 over 100 LRU-cleared queries, and 0.0302 / 0.0390 ms over 1,000 warm queries with injected deterministic RNG. IPC, debounce, rendering, startup and file selection are excluded. Smaller 600-word fixtures and all other source/prefix/context cases passed too.
+
+Packaged large-import observations: Windows three-file import: 28,228.21 ms, renderer heartbeat maximum gap 64.00 ms over 564 ticks, main/worker process peak RSS 239.24 MiB. Linux/Xvfb: 20,179.56 ms, gap 62.30 ms over 403 ticks, peak RSS 302.12 MiB. These are single synthetic UI observations; no total-app-memory, physical typing latency, other-platform speed or worst-case guarantee is inferred. Windows standalone import/prediction benchmarks were Not run; Windows has actual large packaged-import evidence.
+
+### Delivery, review and limits
+
+The verified final Windows directory replaced normal **`out/TypeNudge-win32-x64/`** after the user saved/closed the old app and a process guard confirmed it was stopped. The final-location smoke above passed before temporary generated backups were removed. The pre-existing root Linux artifact is preserved; Linux verification used a separate temporary package. Both package audits passed: `storage-worker.js` is present, the correct native SQLite file is marked/physically unpacked and byte-identical to the installed prebuild, the resource Apache license matches, and the 10,411-byte bundled notices retain CodeMirror/MIT. Final ASAR SHA-256: Windows `0b25304c862f29d33cdef2ed33683461fe97bb01e96289f57a3295973979e4fc`; Linux `82f5497b3fb8f8bf858e285d2d30136a980f2a5d88d23a26ec1298d53945ac93`.
+
+Screenshots/traces are under ignored `test-results/tnd007-windows-complete/`, `test-results/tnd007-windows-final-location/` and copied `test-results/tnd007-linux-runs/`; raw command/benchmark/audit logs are under `test-results/tnd007-evidence/`. A byte check matched 72 runtime/config/script/test files against the verified Linux fixture; only its cached-ZIP packaging location differs. The final review checked 62 scoped files, 70 relative documentation links, SPDX notices, whitespace and an empty Git index. Temporary verification checkouts/tool packages, staging app directories/backups and the exact interrupted synthetic Windows profile are cleaned after retaining their evidence; no real profile is altered.
+
+README diagrams and its entire license/contact/support footer, branding, legal notices, dependency versions and lockfile are preserved. Generated builds/databases/profiles remain ignored. Final scope/link/SPDX/whitespace and source-byte checks are recorded after the package runs. No commit, push, installer, signature, publication, external prediction service or real-user-data mutation is part of this implementation.
+
+Hosted CI, macOS/other architectures, native Linux desktops outside WSL2, physical IME/assistive technology and actual external-browser dispatch remain **Not run**. Synthetic composition, controlled denied access and user-initiated link dispatch stubs do not prove those manual cases. Raw-count mixing still cannot guarantee that every rare higher-N-only candidate survives the final cutoff; no hidden order multiplier or normalization was added.
+
+
+## TND-007 follow-up — N-gram multipliers and database size, 2026-10-18
+
+The user approved individual virtual N-gram multipliers and a database size display, then specified **1–100× sliders with manually editable values**. Each N=1–7 defaults to 1×. Controls are synchronized, integer bounds are validated in renderer/main/request contracts, and preferences persist across restart. Schema **4→5** transactionally adds only the seven default preference values; migration/reopen preserve stored N-grams, source metadata, saved notes, consent and index revision. No reindex or learned-count multiplication occurs.
+
+Each usable N still nominates its top X from raw combined-source counts. Before word merging and final top X, multiply each admitted count by that N’s configured scale. Final sampling uses the resulting summed scores. Merged cache keys include the seven values, while raw per-N SQL pools remain reusable; renderer settings updates invalidate old previews. The full formulas, omitted-count rules, all-1× example and a 100× example are in [the pool guide](../../prediction-pool.md).
+
+Settings also displays measured **database/WAL/SHM file lengths and total**, using B/KiB/MiB/GiB and exact bytes in the tooltip, with **Refresh size**. It refreshes on opening and after completed relevant operations while open. A trusted no-argument `sources:storage` call stats only the worker’s three fixed userData paths; renderer accepts no path. Missing sidecars count as zero; other measurement errors are recoverable. No checkpoint, VACUUM or filesystem scan is triggered. File lengths include derived indices and current journal overhead and are separate from the 32 MiB retained-text quota; deletion can leave reusable SQLite pages without immediately shrinking the files.
+
+### Commands and results
+
+Environment for this follow-up: **native Windows x64**, Node **24.18.0**, Electron **44.9.0**, better-sqlite3 **13.0.3**, from the Windows-mounted WSL checkout. Native commands used `/mnt/c/Program Files/nodejs/node.exe`; the outer tool sandbox was escalated for Windows interop. Chromium sandboxing stays enabled. All runtime checks use isolated synthetic profiles, without opening the real user database.
+
+- `node.exe node_modules/typescript/lib/tsc.js --noEmit`: **passed**.
+- Focused `node.exe node_modules/vitest/vitest.mjs run` for prediction, prediction IPC, preload, source IPC, pool, storage and worker files: **142/142 in 7 files**, 11.00 s.
+- `node.exe node_modules/vitest/vitest.mjs run`: **254/254 in 16 files**, 12.08 s. Existing Unicode/prefix, source availability/cleanup, consent/save/reset, transactional replacement, old-schema and 500,000-word regressions remain passing.
+- Additional final `vitest run tests/unit/prediction-ipc.test.ts`: **8/8**, 246 ms, after extending assertions for invalid/injected multipliers.
+- Forge `api.package({dir:process.cwd(),outDir:'.cache/tnd007-scales/package',interactive:false})`: **passed** for Windows x64.
+- The helper sets `TYPENUDGE_EXECUTABLE` inside Windows Node, then invokes Playwright’s CLI. `test --max-failures=1 --output=test-results/tnd007-scales-windows` against that staged package: **17/17 passed**, 1.6 min.
+- After normal-path delivery, `test tests/desktop/prediction-controls.spec.ts tests/desktop/source-availability.spec.ts --max-failures=1 --output=test-results/tnd007-scales-final-location`: **3/3 passed**, 6.8 s, from **`out/TypeNudge-win32-x64/type-nudge.exe`**.
+
+Deterministic tests check unchanged raw SQL pools with changed merged scores (18/12 becomes 507/117 at N=3 ×100), exact scaled RNG boundaries, omitted counts, and N=7 evidence from two files multiplied after summation. Source rows, hash/revision metadata, all N-gram rows and global index revision remain unchanged on scale-only updates. Schema-4 migration defaults and trigger-induced rollback are covered. Size tests compare all three actual file lengths, missing sidecars and a missing database; IPC tests reject paths/untrusted senders and sanitize failures. The real worker facade returns sizes and retains multiplier settings after restart.
+
+Packaged UI checks exercise default 1× values, the slider at 100×, manually entered 42×, rejected 0/101/fractional/empty entries, actual 20→105→47 score changes, unchanged SQLite data, exact measured file lengths, restart persistence and small-window scrolling. Screenshots of Settings/storage and the seven multiplier controls at 520×480 were visually reviewed. The full desktop run also repeats editing/acceptance/undo, stale IPC, security/sandbox, saving/learning, source cleanup and the 500,000-word import/reindex checks. Its synthetic import observed 28,725.48 ms, maximum renderer heartbeat gap 63.80 ms and main/worker peak RSS 243.24 MiB; this is one run, not a worst-case or full-app-memory guarantee.
+
+### Review and delivery
+
+The normal Windows executable was updated after a process guard found no running TypeNudge. Complete manifests compared 82 old/new generated files; only `type-nudge.exe` and `resources/app.asar` differ. The verified incoming package replaced the normal directory, and its final-location smoke passed before the unchanged generated backup was removed. The real userData and previous root Linux artifact were preserved; there is no separate user-facing variant.
+
+Staged and final-location ASAR audits passed: worker present, native SQLite physically unpacked and byte-identical to the installed Windows prebuild, resource Apache license unchanged, and 10,411 bytes of bundled third-party notices retained. Final ASAR SHA-256: **`56303e5fee2ae1b04ebf2ba2daaac140f1c29daca95c779483292fcd468568a9`**. Logs, manifests and audit JSON are under ignored `test-results/tnd007-scales-evidence/`; screenshots are under `test-results/tnd007-scales-windows/` and `test-results/tnd007-scales-final-location/`.
+
+Final review preserves the existing uncommitted TND-007 implementation, README Mermaid diagrams and the entire license/support footer, branding, dependencies and lockfile. Relative-link, SPDX, whitespace and empty-index checks pass. Application sources and package bytes are unchanged after the successful desktop run; only focused test assertions and documentation were completed afterward. No commit or push was performed.
+
+**Not run for this follow-up:** Linux/macOS packaging/UI and standalone large-corpus benchmarks. The earlier Linux and benchmark results above apply to the base TND-007 implementation and default 1× algorithm; they are not new-platform evidence for these controls. Hosted CI, installer/signing/publication, physical IME and assistive-technology limitations remain as previously recorded.
+
+
+## TND-007 adjustment — 0–250× multipliers, 2026-10-18
+
+The user extended each N-gram multiplier to an integer **0–250×**, keeping **1×** as the default everywhere and retaining manual number entry. Updated all fourteen slider/number bounds, shared main/request validation, Help and current domain/story documentation. No new schema or reindex is needed: schema-5 defaults and previously chosen values remain unchanged.
+
+A 0× order contributes no candidates, display spelling or score. The engine skips its SQL lookup and omits it even when raw results remain in the bounded cache from earlier positive weights. All usable weights at zero produces an empty preview without a random draw or hidden fallback. A positive higher-N weight also cannot provide a suggestion when there is insufficient context and all usable lower orders have weight zero. Positive orders keep the same aggregate-before-LIMIT, scaling, final top-X and sampling mechanism. Zero does not delete any stored counts or alter source/global index revisions.
+
+Environment: the same native Windows x64 Node 24.18.0 / Electron 44.9.0 / better-sqlite3 13.0.3 installation as above, called through Windows Node entrypoints from WSL. Isolated profiles only; renderer isolation, CSP and Chromium sandbox remain enabled.
+
+- `node.exe node_modules/vitest/vitest.mjs run tests/unit/prediction.test.ts tests/unit/prediction-ipc.test.ts tests/integration/pool.test.ts`: **82/82**, 3 files, 698 ms.
+- `node.exe node_modules/typescript/lib/tsc.js --noEmit`: **passed**.
+- `node.exe node_modules/vitest/vitest.mjs run`: **256/256**, 16 files, 10.48 s.
+- Forge `api.package({dir:process.cwd(),outDir:'.cache/tnd007-scales-250/package',interactive:false})`: **passed** on Windows x64.
+- Packaged `test tests/desktop/prediction-controls.spec.ts --max-failures=1 --output=test-results/tnd007-scales-250-windows-final`, with the actual staging executable selected inside Windows Node: **2/2 passed**, 5.6 s.
+
+Coverage includes mixed zero/positive weights, 250× scoring, all-zero cold/warm caches without SQL queries or RNG calls, restoration of positive cached pools, 0/250 validation and rejection of -1/251/fractional/empty values. Real SQLite tests retain every stored source/count/revision and persist a mixture containing zero and 250 across reopen. UI checks cover all seven 1× defaults, slider Home=0 / End=250, manual entry, an empty all-zero result, restart with all zeros retained, re-enabling only N=7, size metadata and the 520×480 panel.
+
+An initial UI fixture observed the old X=10 instead of X=1 after emitting an extra synthetic change alongside fill’s native change. The fixture now sends one change for programmatic setup and commits manual values with native Tab/blur; the unchanged application package passes the original strict candidate/score assertions. Initial log/trace evidence is retained under `test-results/tnd007-scales-250-windows/`, and the passing run under `test-results/tnd007-scales-250-windows-final/`.
+
+ASAR audit passed: native SQLite is unpacked and byte-identical to the installed Windows prebuild; storage worker, resource Apache license and 10,411-byte third-party notices are retained. Verified ASAR SHA-256: **`3dd4bbe78472bd6be89f700b31ba16575d3ac3a876b72ff776f2822a95be3c47`**. Logs, package manifests and audit results are under ignored `test-results/tnd007-scales-250-evidence/`.
+
+Normal-path delivery: **complete**. A process guard initially found the existing `out/TypeNudge-win32-x64/type-nudge.exe` running and stopped before changing any package files. After the user confirmed saving/closing it, a repeated guard found no running TypeNudge and the verified incoming package replaced the normal directory. The same two packaged control tests passed **2/2 in 5.4 s** from the final normal executable, with a matching ASAR/native/license audit. All 82 generated files match the verified incoming manifest; only executable/ASAR differ from the previous package. The unchanged generated backup was removed after manifest verification and the final smoke. No user process was terminated and no real userData was opened for verification.
+
+The existing uncommitted TND-007 work, stored-text/word limits, source data and default values are preserved. README diagrams/license/support, branding, dependencies and lockfile are unchanged. No commit or push. Linux/macOS follow-up packaging/UI, full 17-test desktop rerun and standalone large benchmarks are **Not run** for this adjustment; the focused package checks above cover the changed behavior, with earlier broader results retained as historical evidence.
+
+
+## TND-007 UI adjustment — About support link and wider Settings, 2026-10-18
+
+The user requested that **Ways to support** stay inside **About**, and that Settings use more horizontal space and parallel columns. Removed the editor-footer Support button and its renderer listener; the existing About label, configured URL, named HTTPS allowlist and user-click requirement remain unchanged. It describes supporting the maintainer, rather than technical support. The footer keeps document status.
+
+Settings now grows to **840 px** with two columns: general prediction options on the left and all seven N-gram multipliers on the right. At viewport widths below **760 px**, it stacks into one column; the modal scrolls within the window without horizontal overflow. Database size and Refresh size use a wrapping row. Existing settings IDs, persisted values, 0–250× bounds, default 1×, focus restoration, Escape and all prediction/storage behavior are retained.
+
+Word-order behavior was also explained in the pool guide: N-grams are ordered contiguous sequences. `alma körte` and `körte alma` are separate bigrams; reversed context arrays are distinct keys. Cross-file sums require the same N, ordered context and next word. This describes existing storage/query behavior and makes no algorithm change.
+
+Environment: native **Windows x64**, Node **24.18.0**, Electron **44.9.0**, better-sqlite3 **13.0.3**, launched from the WSL checkout with native Windows Node. Real packaged executables and synthetic isolated profiles; renderer isolation/CSP/Chromium sandbox stay enabled.
+
+- `node.exe node_modules/vitest/vitest.mjs run tests/unit/ipc.test.ts tests/unit/security.test.ts`: **31/31**, 2 files, 227 ms.
+- `node.exe node_modules/typescript/lib/tsc.js --noEmit`: **passed**, including the final existing-test screenshot addition.
+- Forge `api.package({dir:process.cwd(),outDir:'.cache/tnd007-layout/package',interactive:false})`: **passed**.
+- Staged-package Playwright `test tests/desktop/editor.spec.ts tests/desktop/prediction-controls.spec.ts --max-failures=1 --output=test-results/tnd007-layout-windows`: **15/15 passed**, 19.8 s.
+- Final normal-path Playwright, the same files with `--grep 'Tab leaves|external links|settings/help|sliders/manual' --max-failures=1 --output=test-results/tnd007-layout-final-location`: **4/4 passed**, 7.0 s, using **`out/TypeNudge-win32-x64/type-nudge.exe`**.
+
+Existing desktop checks were adapted to the deliberate removal of the footer focus target: ordinary Tab still leaves the editor without a suggestion. About exposes the support action, opening About alone dispatches no external URL, and clicking Ways to support sends only the configured maintainer URL to a stubbed system-browser dispatcher. Footer actions are absent. Actual browser-launch behavior is not newly claimed.
+
+Geometry assertions prove parallel columns at the default 1040×780 window and at 800×760, and stacked sections/no horizontal overflow at 520×480. All seven multipliers and Close are in the viewport at the default size. Screenshots of those layouts and About were visually reviewed. Existing real import/index, one/K/all acceptance, copy/undo, source settings, zero/250/manual values, restart, stale replies, saved notes/consent/reset, save/open errors and sandbox/CSP checks pass in the staged run. Screenshot capture was added to the existing About test after that run and is included in the passing final-location smoke.
+
+The user saved/closed the running normal application; a fresh process guard found no TypeNudge before replacing the generated directory. Complete 82-file manifests match the verified incoming package, with only executable/ASAR differing from the previous build. Final smoke and native/license audits passed before the unchanged generated backup was removed. Real userData and the existing Linux artifact were preserved.
+
+Final ASAR SHA-256: **`7b38b255e3f06ed0f59005aa007e258740582c171815c1f3d1b28cc991324955`**. Audit confirms the worker, unpacked native SQLite identical to the installed Windows prebuild, unchanged resource Apache license and 10,411-byte third-party notices. Logs/manifests/audits are under ignored `test-results/tnd007-layout-evidence/`; screenshots are under `test-results/tnd007-layout-windows/` and `test-results/tnd007-layout-final-location/`.
+
+The existing uncommitted TND-007 work is retained. README Mermaid diagrams and its whole license/support footer, branding JSON, dependencies and lockfile are unchanged. Relative-link, source-notice, whitespace and empty-index checks pass. No commit or push. Linux/macOS packaging/UI, the full unit suite, separate large-import desktop test and standalone benchmarks were **Not run for this layout-only adjustment**; their earlier evidence remains historical.

@@ -1,103 +1,73 @@
-# Testing and evidence plan
+# Testing and evidence
 
-TND-001–006 have runnable checks and recorded Linux x64/WSLg and native Windows x64 package evidence. Hosted CI and other native OS targets remain unverified. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+The source includes TND-001–007. [Release verification](releases/release-0.1-mvp/verification.md) records actual commands/results and platform limits; historical TND-001–006 timings do not verify the extended N=7 algorithm. Hosted GitHub Actions, other OS/architectures, physical IME and installer/signing/publication remain unverified or unprovided.
 
-## Foundation checks
+## Local checks
 
 ```bash
-npm test
 npm run typecheck
+npm test
 npm run package
 npm run test:desktop
-```
-
-Vitest checks IPC argument/sender validation, empty/unsafe brand links, the named preload surface, and development/production request policies. Desktop tests use the installed Electron binary with `chromiumSandbox: true`, an isolated temporary user-data directory, and a real graphical session. Build first using `package`; the smoke harness then loads `.vite/build/main.js` without Vite. Do not run packaging concurrently with `dev`, which rewrites that same build directory.
-
-TND-002 adds real temporary-file SQLite integration tests, with no mocked database: Unicode/NFC/apostrophe counts, sentence boundaries, source IDs/hashes/revisions, idempotent reimports, transactional replacement and rollback via a deliberately failing SQL trigger, retained-copy reindexing, independent cascading deletion, reopen/persistence, indexed prefix ranges, future-schema rejection, and import/storage resource limits. Malformed UTF-8, BOM-marked UTF-16, unsupported extensions, missing files, directories, links, and traversal-style selections are rejected. Import cleanup checks all C0/C1 controls (including FF/NUL/DEL), preserved tabs/CR/LF, Unicode line/paragraph separators, and acceptance of zero-width/bidirectional marks, soft hyphens, unusual spaces and symbols. Assertions cover original-file immutability, cleaned stored bodies/hashes, stable reimport/reindex counts, page boundaries and raw-byte limits even when cleanup shrinks the stored text. Focused IPC tests reject renderer paths/SQL, wrong sender frames and invalid IDs, and exercise dialog cancellation, serialized writes and recoverable failures.
-
-The desktop suite checks startup, renderer Node isolation, isolated-world separation, sandbox evidence (Linux `/proc` seccomp/no-new-privileges; Electron process metrics on other systems), CSP, Unicode lines, selection, real clipboard copy/paste, undo/redo, Tab, About/Escape/focus restoration, named external-link dispatch, rejected URL injection, blocked remote fetch/popups, and a 520 × 480 window. It captures the actual editor under ignored `test-results/`. External browser launch is stubbed in the Electron main process so no support page is opened during automated checks. Native OS browser launching and physical IME composition require manual checks.
-
-To exercise a packaged app directory with the same suite on Linux:
-
-```bash
-TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
-```
-
-Use the actual output path for your OS/architecture; this example is not a cross-platform packaging claim. A development smoke can also run after `npm run dev` builds the app, while its local Vite server remains running.
-
-The TND-002 desktop flow stubs only the OS picker's return value; ingestion and SQLite are real. It imports valid and malformed synthetic files, repeats/updates an import, reindexes after removing the original, verifies one-source deletion, restarts Electron with the same temporary `userData`, and inspects the persisted DB. The packaged-executable run is required to catch missing native dependencies/unpacked files. The Node and Electron runtimes both opened the pinned native module; other OS/architectures remain unverified until actually run.
-
-## Prediction core checks (TND-003)
-
-```bash
-npm test -- tests/unit/prediction.test.ts tests/integration/prediction.test.ts
-npm run typecheck
 npm run benchmark:prediction
+npm run benchmark:import
 ```
 
-The 48 pure/unit cases cover all seven nonempty N selections, disabled/unusable-order skipping, longest-context backoff, input bounds, Unicode normalization, equivalent cache keys, LRU eviction, empty/failed queries, revision/source/settings changes and immutable results. The 22 real SQLite integration cases cover exact cross-source aggregation, binary ties/top-three uniqueness, multilingual/supplementary prefixes, apostrophes, completed-word exclusion, sentence/document boundaries, disabled/unselected sources at all orders, primary-key query plans, source mutation/cache invalidation, rollback and read-snapshot consistency. The full `npm test` also runs the import/IPC regression suites.
+Run focused tests first, then full regressions. There is no separate lint command. Node/dependencies are pinned in the lockfile; `better-sqlite3` ships Node-API prebuilds and does not need a legacy node-gyp rebuild on the verified targets. `allowScripts` and Forge's module-specific rebuild exclusion retain that policy. Recheck native loading when changing versions/platforms.
 
-The benchmark builds the actual core into ignored `.cache/prediction-benchmark/` and uses temporary DBs/synthetic text, never user data. It checks outputs and unchanged source metadata, then removes the temporary data. Desktop/packaging checks were not repeated for the main-process-only TND-003 story. TND-004 adds the editor-facing path and its own desktop evidence below.
-
-## Inline suggestions and settings (TND-004)
+## Pool and storage checks
 
 ```bash
-npm test -- tests/unit/suggestions.test.ts tests/unit/prediction-ipc.test.ts tests/unit/sources-ipc.test.ts tests/unit/preload.test.ts tests/integration/storage.test.ts
-npm run typecheck
-npm run package
+npm test -- tests/unit/prediction.test.ts tests/integration/prediction.test.ts tests/integration/pool.test.ts
+npm test -- tests/integration/storage.test.ts tests/integration/personal.test.ts tests/integration/worker.test.ts
+```
+
+Pure tests exercise all seven contiguous maximum-N choices, each context suffix, both top-X cutoffs, admitted-count sums, BINARY ties and exact weighted-selection boundaries with injected random values. They cover short/empty context, empty/singleton pools, virtual-context rollout, first-position prefix handling, alternative requests, bounded validation, deterministic-pool caching and LRU eviction. Random preview output is not cached. A shared 128-entry LRU holds per-N and merged pools, allowing unchanged short contexts to be reused within a continuation.
+
+Real temporary SQLite fixtures verify source SUM before LIMIT (including shared candidates below each file's individual top X), 7+4=11, the documented 18/12 mixture and 60% boundary, no N labels on final rows, source activation/selection/consent and prefix Unicode normalization. They check actual primary-key range query plans, source-state/read-snapshot consistency, mutation/cache invalidation and rollback.
+
+Storage checks index N=1–7 with six-token suffixes and sentence/line/document boundaries, transactional import/reindex/save replacement, source-specific deletion across all seven orders, exact 500,000/500,001-word and byte limits, unchanged reimport/resave idempotence and retained-copy reindexing. Import controls/UTF-8/path/link rules and source availability/conditional cleanup remain covered. Personal storage tests verify default-off consent, no learning from ordinary typing/opt-in alone, save-time replacement, forgetting/reset/deletion and independent imported counts.
+
+A real schema-3 fixture preserves N=1–3 rows, import paths, learned/unlearned notes and preferences through migrations to schemas 4 and 5. Sparse N selections migrate to their maximum. Explicit retained-copy reindex and unchanged consented Save upgrade index coverage; an unrelated unlearned note stays unlearned. A failing trigger proves migration rollback. Schemas 1/2 and future-schema refusal have separate regressions.
+
+The real worker test builds the production worker entry, starts a 500,000-word replacement, observes numeric progress/continuing main-thread ticks, reads the old committed source from a second connection, terminates the worker and reopens the unchanged index. A subsequent successful replacement reaches N=7 without partial counts. Client unit tests verify serialized operations, coalesced obsolete predictions, the 32-waiter bound, safe errors and worker failure/cleanup.
+
+## IPC and editor checks
+
+Main/preload tests validate the trusted window/main frame/entry URL, exact argument shapes, bounded Unicode/context/settings, UUIDs and booleans before privileged work. Renderer cannot choose arbitrary source sets/N/X in prediction queries, inject SQL/paths/consent or access Node. Async storage failures are sanitized. Import mutations keep their lock while a picker or final file check is pending.
+
+CodeMirror state tests cover six-word context extraction, Unicode suffix preservation, sentence/line boundaries, multiple selections, midword/overlong tokens and debounce/out-of-order/ABA/destruction handling. The actual desktop suite covers Tab/Alt+Right/Alt+Enter acceptance, valid remaining previews, one-step undo, Alt+Down alternatives/singletons, dismissal, copy excluding ghost text, stale delayed IPC and synthetic composition. It uses valid-pool membership instead of assuming a deterministic random continuation. Settings/Help are hidden by default, restore focus natively and fit 520×480 with scrolling. Normal editing and About/support/source/document flows remain covered.
+
+The large-import desktop case selects three real synthetic files: 500 KiB with 100 FF boundaries, 500,000 varied unique words and an exact 5 MiB file. It types while indexing, checks a main-process IPC response, numeric progress, renderer heartbeat, stored bytes/hashes/N counts, unchanged reimport, retained-copy rebuild, suggestions and restart. Measurements are observations rather than total-app-memory, physical-keyboard or worst-case guarantees.
+
+## Packaged graphical runs
+
+Build first and run the real packaged executable with a temporary profile:
+
+```bash
 TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
 ```
 
-Pure CodeMirror state tests exercise bounded caret/context extraction, sentence/line boundaries, selections/multiple carets/midword suppression, Unicode suffix preservation and long input. The async gate tests cover debounce, out-of-order/ABA replies, cancellation, failed replies and destruction. Main/preload tests reject renderer-selected SQL, paths, source IDs, N overrides, malformed/overlong words, nonempty-N violations, extra settings and untrusted senders. Real SQLite tests exercise transactional preference writes/rollback, persistence, source modes, idempotent activation and unchanged counts/other sources.
-
-The real packaged Electron suite adds prefix/next-word/Unicode completion, all three keys, cycling wraparound, copy excluding ghost text, completion undo, persistent mode/N/activation, empty corpus and immediate N behavior. Controlled delayed IPC handlers exercise out-of-order typing replies, cursor movement, settings/source changes, dismissal while pending, failure/retry and synthetic IME composition. A delayed dialog plus delayed preference reply verifies that editing stays available and suggestions remain suspended until both operations finish. Those controlled handlers are test-only and restored by restarting Electron. Physical IME, accessibility hardware and other OS targets remain separately unverified.
-
-## Personal documents and opt-in learning (TND-005)
-
-```bash
-npm test -- tests/integration/personal.test.ts tests/unit/documents-ipc.test.ts tests/unit/preload.test.ts
-npm run typecheck
-npm run package
-TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```powershell
+$env:TYPENUDGE_EXECUTABLE = "$PWD\out\TypeNudge-win32-x64\type-nudge.exe"
+npm.cmd run test:desktop
+Remove-Item Env:TYPENUDGE_EXECUTABLE
 ```
 
-Thirteen real SQLite cases cover default-off/save-only behavior, unchanged saves, replacement counts, consent/activation/source modes, forget/reset/delete, restart persistence, shared resource budgets, schema-1 migration, stale revisions and rollback on a deliberately rejected N-gram write. Sixteen IPC cases validate the eight named operations, trusted sender, bounded document fields, UUIDs, exact boolean preferences, rejected path/SQL/consent injection and sanitized errors; the existing preload check includes their named bridge methods.
+The harness uses `chromiumSandbox: true`, removes inherited `ELECTRON_RUN_AS_NODE`, checks renderer Node/isolated-world separation, restrictive CSP, blocked fetch/popups and platform sandbox evidence. It stubs only OS picker returns and deliberate external-browser dispatch; filesystem/IPC/SQLite/import/learning are real. Controlled delayed handlers are restored by restarting Electron. User data is isolated and synthetic originals are left unchanged except intentional deletion fixtures. Screenshots/traces stay under ignored `test-results/`.
 
-The packaged suite adds real Save/Ctrl+S/Open/New/Delete/Remove learning/Reset flows, stored text/count inspections, no indexing on ordinary typing or opt-in alone, off-state saves removing prior counts, personal prefix suggestions/deactivation, restart persistence and unchanged imported data. It checks discard cancellation, per-document undo isolation and a real window-close attempt with Keep editing. Controlled test-only delayed Save/Open replies prove later typing is retained and dirty; a failed Save leaves a visible error and preserves text. These last fixture handlers do not commit data and are separate from the production SQLite persistence checks.
+Packaged runs must include `storage-worker.js`, the matching physically unpacked SQLite prebuild, resource Apache license and bundled dependency notices. A Node DB open alone is insufficient evidence. Do not package concurrently with `dev`, which rewrites `.vite/`. Native browser dispatch, physical IME, assistive technology and untested targets need separate manual checks.
 
-## Release coverage
+## Benchmarks
 
-| Scope | Approach | Story |
-| --- | --- | --- |
-| Electron main/preload boundary | Mocked IPC input validation, no Node/SQLite access in renderer, deny unexpected filesystem requests | TND-001 |
-| Text ingestion/SQLite | Temp DBs, Unicode TXT/MD, safe limits, repeat import, per-source enable/delete/reindex | TND-002 |
-| N-gram calculations | Deterministic fixtures for N=1/2/3, prefix, backoff, source filters, top 3 | TND-003 |
-| Inline editor UX | CodeMirror tests/smoke for Tab, Alt+Down, Esc, stale requests, IME and normal shortcuts | TND-004 |
-| Personal learning | Opt-in default off; save, resave without double count, disable learning and reset | TND-005 |
-| Desktop delivery | Vitest, Electron smoke, packaged app launch and native `better-sqlite3` DB open on each verified OS, CI | TND-006 |
+`benchmark:prediction` uses two bounded-vocabulary synthetic sources at 600 and 30,000 total words. Five fresh databases measure initial indexing/reindexing; 100 LRU-cleared and 1,000 warm queries measure the actual engine/repository with deterministic injected RNG. Validation/snapshot/cache/SQL are included; fixture construction, DB opening, IPC, debounce and painting are excluded. Warm hits reuse pools while production requests can resample.
 
-## CI and delivery checks (TND-006)
+`benchmark:import` starts one fresh Node process/database per fixture: 500,000 repeated words, deterministic varied words, 500,000 unique words and an exact 5 MiB mostly-padding text. It measures real selected-file read/decode, indexing/write/commit, unchanged reimport and retained-copy reindex. It validates stored full bodies/hashes/all-N counts and measures five LRU-cleared all-usable-N queries at preview lengths 1/3/10. It reports input bounds, runtime/hardware, SQLite file size, observed WAL size and whole-process peak RSS. RSS includes fixture construction/assertions/all operations and excludes separate Electron renderer/GPU processes; WAL observation is taken before close/checkpoint cleanup.
 
-`.github/workflows/checks.yml` runs on push, pull requests and manual dispatch. Its single Ubuntu 24.04 / Node 24.18.0 job runs `npm ci --no-fund`, `npm run typecheck` and `npm test`, with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`. It uses commit-pinned checkout/setup-node actions, read-only contents permission, disabled persisted git credentials, npm caching, a 15-minute timeout and cancellation of superseded runs. No GUI/native packaging matrix or publishing is claimed. Workflow YAML was parsed/reviewed and the commands passed in a fresh local temporary installation; hosted execution remains **Not run**. There is no separate lint command.
+LRU-cleared does not flush SQLite/OS pages. One import/reindex sample and five prediction probes per fixture do not establish population percentiles, worst-case limits or other-platform speed. Returned pool/batch bounds do not cap SQL scan cost or derived SQLite/WAL disk use. Record actual costs and limitations in verification.
 
-For graphical verification, build/package before `npm run test:desktop`; use `TYPENUDGE_EXECUTABLE` for the real output executable. The TND-006 development run also checks all scenarios with a running `npm run dev` server. Do not package while dev is running, and rebuild after stopping dev before testing the production `.vite/build/main.js` entry. The packaged `out/` executable is an independent production copy.
+## CI
 
-The package audit verifies native `.node` files are physically present under `app.asar.unpacked`, including `better-sqlite3/prebuilds/linux-x64.node` and `win32-x64.node` on the corresponding tested targets, the resource Apache license matches `LICENSE`, and generated bundled dependency notices include CodeMirror/MIT. The real packaged import/save/restart scenarios prove Electron opens and updates `typenudge.sqlite3` under its isolated `userData`; a Node-only DB open is insufficient evidence. Other shipped prebuild filenames do not establish other-platform runtime support.
+`.github/workflows/checks.yml` uses commit-pinned actions, Node 24.18.0 on Ubuntu 24.04, read-only contents permission, no persisted Git credentials and a 15-minute timeout. It runs locked installation, typecheck and unit/SQLite tests with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`; no GUI/package/publish job is configured. Hosted execution remains **Not run** until observed.
 
-For native Windows commands, see README. npm 11.16.0 or newer honors the explicit `allowScripts` denial for `better-sqlite3`; Forge's `ignoreModules` entry also prevents its unnecessary rebuild while retaining/unpacking its shipped Node-API binary. The desktop harness removes inherited `ELECTRON_RUN_AS_NODE` entirely and uses Windows `Ctrl+Y` for redo. Unit/integration fixtures use host-valid file URLs, Windows junctions for final/ancestor link rejection, and invalid filename input without attempting to create an OS-invalid file. Linux retains final-file symlink coverage; Windows file-symlink privileges are not required or claimed.
-
-## Performance checks
-
-`npm run benchmark:prediction` uses two synthetic `we write wordX.` sources at 600 and 30,000 total tokens, with at most 500 continuations. Five fresh temporary DBs measure first indexing and retained-copy reindexing of both sources. Timings include tokenization, hashes and SQLite writes/commits, excluding corpus construction, DB/schema creation, OS file selection/decoding and assertions. With five samples, reported indexing p95 is the maximum observed sample, not a stable population estimate.
-
-Each prediction case measures 100 LRU-cleared requests and 1,000 warm requests around the actual engine/repository call. Output uses `lruCleared` instead of the older `cold` label: SQLite/OS pages are not flushed. Validation, source metadata/cache access and SQL on misses are included; IPC, painting, startup, debounce and user typing are excluded. Expected N/top-three output and source immutability are asserted. The runner records CPU, logical CPUs, available memory, OS/kernel, Node and SQLite. Actual results and limitations are in TND-006 verification; no worst-case, quality or cross-platform guarantee is inferred.
-
-The larger-import follow-up adds `npm run benchmark:import`. Each fixture runs once in a fresh Node process/database: 500 KiB repeated words, 500 KiB seeded varied Unicode words, 125,000/250,000 unique-word corpora, and an exact 5 MiB mostly-padding boundary case. Timed import includes real selected-file reading/UTF-8 decoding, tokenization and SQLite writes; fixture generation, schema setup and assertions are excluded. It also times unchanged reimport and retained-copy reindexing, checks complete bytes/hashes/N counts and known trigram output, and reports five LRU-cleared unigram/trigram probes. Whole-process peak RSS includes fixture construction/assertions/all operations and excludes Electron renderer/GPU processes. One operation sample per fixture and five prediction probes do not support stable percentile or worst-case claims.
-
-Integration checks cover exact 250,000-word, 5 MiB/file and 10 MiB/selection boundaries, rejection without changing prior contributions, unchanged reimport/reindex frequencies, and opt-in learning of a 500 KiB note within its separate 1 MiB save limit. `tests/desktop/large-import.spec.ts` uses the real packaged app with a 500 KiB source containing 100 form feeds, plus 250,000-word and 5 MiB sources; it checks stored text/hash/counts, unchanged reimport, reindex, ghost text and restart persistence. Its renderer interval probe and main-process peak RSS are observations, not physical keyboard responsiveness or total-application-memory guarantees. The 128-character individual-word limit, total source/text budgets and learning defaults remain enforced.
-
-The unavailable-source follow-up adds real SQLite checks for schema-2 migration, canonical location persistence, unchanged-reimport backfill, metadata privacy, file removal/restoration, missing empty sources, scoped/cascading cleanup, transactional rollback and prediction-cache invalidation while preserving other imports/personal notes. Unit checks cover access denial, unknown filesystem errors, bounded timeouts and exact validated IPC methods/IDs plus mutation serialization. The independent packaged `source-availability.spec.ts` selects real files, removes only its synthetic originals, verifies conditional Clear index / absent empty-source action, restoration refusal, cleanup persistence and a 520 × 480 dialog. The source dialog also renders import limits from the shared values.
-
-## Recording rules
-
-Record actual OS, commands, result summaries and failures for the current story. If a target platform, packaging action or test was not run, write `Not run`. No paid services or secrets are needed; network access is not a feature requirement. Capture failures and limitations plainly.
+TND-007 multiplier/size regressions cover exact seven-value integer bounds (0–250), copied/frozen settings, zero/250 boundary values, omitted zero-weight orders, all-zero cold/warm-cache results without random draws, scaled final-cutoff/RNG results, raw per-N cache reuse with scale-dependent merged keys, rare N=7 evidence summed across files, unchanged stored N-grams/source metadata/index revision, and rollback/defaults for schema 4→5. Storage tests compare real DB/WAL/SHM file lengths, missing sidecars and missing DB errors. Packaged controls exercise sliders, manual entries and invalid values, retained settings after restart, actual weighted predictions, measured size metadata and 520×480 overflow. See the follow-up verification for OS-specific evidence.

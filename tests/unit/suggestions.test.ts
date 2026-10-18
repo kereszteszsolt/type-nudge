@@ -10,9 +10,10 @@ function context(doc: string, head = doc.length) { return predictionContext(Edit
 it.each([
   ['', { prefix: '', context: [] }], ['we write wo', { prefix: 'wo', context: ['we', 'write'] }],
   ['earlier. New wo', { prefix: 'wo', context: ['New'] }], ['earlier\nÚj ár', { prefix: 'ár', context: ['Új'] }],
+  ['earlier\u2028New wo', {prefix:'wo',context:['New']}], ['earlier\u2029New wo', {prefix:'wo',context:['New']}],
   ['one; two: three! four? five。 șt', { prefix: 'șt', context: [] }],
-  ["one, two-three don’", { prefix: 'don’', context: ['two', 'three'] }],
-  ['a b c ', { prefix: '', context: ['b', 'c'] }], ['A\u0301rvíz 日本語 ', { prefix: '', context: ['A\u0301rvíz', '日本語'] }],
+  ["one, two-three don’", { prefix: 'don’', context: ['one', 'two', 'three'] }],
+  ['a b c ', { prefix: '', context: ['a', 'b', 'c'] }], ['A\u0301rvíz 日本語 ', { prefix: '', context: ['A\u0301rvíz', '日本語'] }],
 ])('extracts bounded current-sentence CodeMirror context from %j', (text, expected) => { expect(context(text)).toEqual(expected); });
 it('suppresses selections, multiple carets, midword completions and overlong tokens', () => {
   expect(predictionContext(EditorState.create({ doc: 'word', selection: { anchor: 0, head: 2 } }))).toBeNull();

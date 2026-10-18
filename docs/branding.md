@@ -24,3 +24,5 @@ The TND-001 main-process bundle reads this JSON at build time. App name, author 
 TND-001 renders no optional images and uses the default Electron window icon; all current asset slots are empty. Loading/packaging nonempty optional image assets and verifying supported formats remains delivery work in TND-006. No remote branding assets are loaded.
 
 **Legal separation:** the full Apache-2.0 text stays in `LICENSE`, and new handwritten source uses the short two-line SPDX notice. Changing branding must never rewrite either. General JSON/metadata files do not get SPDX source headers.
+
+The maintainer’s **Ways to support** action stays inside **About**. It describes ways to help the developer and projects, rather than technical support. The main editor footer contains only document status; no persistent support button is rendered. The configured URL and display label are retained.

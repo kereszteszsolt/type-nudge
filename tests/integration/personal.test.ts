@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
+import { defaultNgramScales } from '../../src/shared/prediction';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { downgradeToV3 } from '../fixtures/schema-v3';
 import { SourceStore } from '../../src/main/storage/store';
 import { PredictionEngine } from '../../src/main/prediction/engine';
 import type { DocumentSummary, SaveDocument } from '../../src/shared/documents';
@@ -21,7 +23,7 @@ function save(text: string, previous?: DocumentSummary, name = 'Personal note') 
   return store.personal.save({ id: previous?.id ?? null, revision: previous?.revision ?? null, name, text });
 }
 function predict(mode: SourceMode = 'personal', prefix = '') {
-  return engine.predict({ prefix, context: [], sourceIds: store.predictionSourceIds(mode), enabledN: [1, 2, 3] });
+  return engine.predict({ngramScales:defaultNgramScales, prefix, context: [], sourceIds: store.predictionSourceIds(mode), maxN: 3, poolSize:3, previewWords:1 });
 }
 function counts(kind = 'personal') { return db.prepare('SELECT g.* FROM ngrams g JOIN sources s ON s.id = g.source_id WHERE s.kind = ? ORDER BY source_id, n, context_key, next_token').all(kind); }
 
@@ -42,7 +44,7 @@ it('replaces learned N=1/2/3 contributions and makes unchanged saves idempotent'
   expect(first).toMatchObject({ learned: true, tokenCount: 6 });
   const original = counts(); const before = predict();
   expect(save('we write words. we write words.', first)).toEqual(first);
-  expect(counts()).toEqual(original); expect(predict()).toBe(before);
+  expect(counts()).toEqual(original); expect(predict().candidates).toBe(before.candidates);
   const second = save('Új szöveg most.', first);
   expect(second.revision).toBe(2);
   expect(predict('personal', 'wo').candidates).toEqual([]);
@@ -56,7 +58,7 @@ it('learns a 500 KiB note above the old word limit without inflating repeated sa
   expect(note).toMatchObject({ tokenCount: 102_400, learned: true, revision: 1 });
   expect(store.personal.open(note.id).text).toBe(text);
   const frequencies = () => db.prepare('SELECT n, frequency FROM ngrams ORDER BY n').all();
-  const expected = [1, 2, 3].map((n) => ({ n, frequency: 102_400 - n + 1 }));
+  const expected = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ n, frequency: 102_400 - n + 1 }));
   expect(frequencies()).toEqual(expected);
   expect(save(text, note)).toEqual(note);
   expect(frequencies()).toEqual(expected);
@@ -123,7 +125,7 @@ it('rolls back saved text, revision, hash and counts together on indexing failur
   db.exec("CREATE TRIGGER reject_personal BEFORE INSERT ON ngrams WHEN new.next_token = 'fail' BEGIN SELECT RAISE(ABORT, 'fixture'); END");
   expect(() => save('new fail', note)).toThrow();
   expect(store.personal.open(note.id)).toEqual({ ...note, text: 'old old' });
-  expect(counts()).toEqual(original); expect(predict()).toBe(cached);
+  expect(counts()).toEqual(original); expect(predict().candidates).toBe(cached.candidates);
   expect(() => save('fail', undefined)).toThrow(); expect(store.personal.list().documents).toHaveLength(1);
 });
 it('rejects stale revisions and resource limits while allowing unlearned long words to be saved', () => {
@@ -152,10 +154,11 @@ it('bounds combined stored UTF-8 bytes across imports and personal notes', () =>
 });
 it('migrates schema 1 without altering imported text, preferences or N-gram counts', () => {
   store.replace('import', 'import.txt', 'original corpus'); const sources = store.list(), original = counts('imported');
+  downgradeToV3(db);
   db.exec('DROP TABLE imported_files; DROP TABLE personal_documents; PRAGMA user_version = 1;');
   store.close(); store = new SourceStore(filename);
-  expect(db.pragma('user_version', { simple: true })).toBe(3);
-  expect(store.list()).toEqual(sources); expect(counts('imported')).toEqual(original);
+  expect(db.pragma('user_version', { simple: true })).toBe(5);
+  expect(store.list()).toEqual(sources.map(s=>({...s,indexMaxN:3}))); expect(counts('imported')).toEqual(original);
   expect(store.personal.list()).toEqual({ learning: false, documents: [] });
 });
 it('rejects cross-kind IDs for personal operations and invalid document fields', () => {

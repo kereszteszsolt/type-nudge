@@ -10,7 +10,9 @@
 
 **Added in TND-005:** schema version 2 adds `personal_documents` without altering imported rows or counts. Main-process `PersonalStore` persists explicitly saved documents, consent, per-note activation and learned contributions. Eight `documents:*` calls list summaries, open one bounded body, save one exact `{id, revision, name, text}` object, delete, toggle consent, toggle a note, forget one contribution or reset personal learned data. IDs are opaque UUIDs, revisions reject stale overwrites, and no paths/SQL are accepted. `predictionSourceIds` additionally gates all personal sources on persisted consent. The renderer holds unsaved text and save snapshots locally; switching documents resets undo/ghost state, late opens cannot overwrite intervening edits, and close uses a discard guard. No per-keystroke persistence or learning occurs.
 
-TypeNudge will be **one Electron desktop app**, not a browser-hosted web application. The **renderer** hosts CodeMirror 6, ghost-text decorations and settings. A **small preload bridge** exposes narrowly scoped IPC operations. The **main process** owns local imports, document persistence and SQLite queries, calling a pure prediction module where possible.
+TypeNudge is **one Electron desktop app**, not a browser-hosted web application. The **renderer** hosts CodeMirror 6, ghost-text decorations and settings. A **small preload bridge** exposes narrowly scoped IPC operations. The **main process** owns local imports, document persistence and SQLite queries, calling a pure prediction module where possible.
+
+Original TND-001–006 service flow (the N-gram services now run in the local worker described below):
 
 ```mermaid
 flowchart LR
@@ -23,13 +25,21 @@ flowchart LR
     Main -->|Typed IPC result| CM
 ```
 
+## TND-007 runtime
+
+TND-007 replaces the historical N-subset/backoff/top-three interface above with maximum N=1–7, mandatory lower orders, both top-X cutoffs, score-weighted sampling and up to ten virtual-context words. Main validates `{prefix,context,avoidWord?}` and exact six-field settings, including seven validated 0–250× virtual multipliers. It delegates named operations to `StorageClient`; `storage-worker.js` owns the only SQLite connection and serializes all imported/personal operations and prediction sequences. Source mode/consent are resolved there, with one read snapshot per sequence. Main maintains a 32-waiter bound, coalesces obsolete queued predictions and serves numeric progress without waiting behind an index operation.
+
+Schema 4 preserves older counts and exposes index coverage; explicit retained-copy reindex or consented Save upgrades legacy contributions. Tokenization flushes bounded batches instead of a full-corpus Map. Source/body/count/revision replacements remain atomic. A worker failure fails pending requests safely; restart uses SQLite recovery. This is an in-app local thread, without a server or new external service.
+
+The renderer has hidden Settings and keyboard Help dialogs, a contiguous maximum-N slider, seven synchronized multiplier slider/number pairs, measured DB/WAL/SHM size with manual refresh, and stable multi-word ghost state. Tab/Alt+Right/Alt+Enter accept one/K/all words in isolated undo steps; Alt+Down requests an alternative and Esc dismisses. Source/settings changes and ordinary edits invalidate stale continuations. See [pool mechanics](prediction-pool.md) and [storage](indexing-and-storage.md).
+
 ## Responsibilities
 
 - **UI renderer:** document editing, source/N choices, currently visible suggestions, accessibility, and explicit save/import actions. No direct SQLite/file system/Node APIs.
 - **Preload:** the minimum message bridge. It is not an unrestricted shell, SQL client, or filesystem adapter.
-- **Main services:** validated IPC dispatch, local file reading/writing, SQLite lifetime, transaction handling and bounded prediction requests.
+- **Main services:** trusted IPC dispatch, OS picker, bounded worker queue/lifetime and progress. **Local storage worker:** selected-file reading, SQLite lifetime, transactions, indexing and bounded prediction sequences.
 - **Indexer:** Unicode-aware tokenization and immutable document revision inputs; per-source N-gram counts with atomic reindexing.
-- **Prediction engine:** consumes active sources, allowed N, context and partial prefix; queries indexed results and returns ranked candidates.
+- **Prediction engine:** consumes eligible sources, maximum N, X, context/prefix and preview count; virtually scales and combines per-N pools and samples sequential continuations.
 - **SQLite:** local persistent store under Electron `userData`; not in the repository, user-selected import directory, installation directory, or generated build output.
 
 ## Data boundaries

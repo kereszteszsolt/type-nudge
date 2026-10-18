@@ -51,11 +51,6 @@ async function start(): Promise<void> {
     button.addEventListener('click', () => { void openLink(link.id); });
     element('about-links').append(button);
   }
-  const support = element<HTMLButtonElement>('support-button');
-  if (info.links.some((link) => link.id === 'authorWaysToSupportUrl')) {
-    support.hidden = false;
-    support.addEventListener('click', () => { void openLink('authorWaysToSupportUrl'); });
-  }
   editor.focus();
   window.addEventListener('pagehide', () => editor.destroy(), { once: true });
 }

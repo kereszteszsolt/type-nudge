@@ -63,7 +63,7 @@ export function initializeDocuments(onBusy: (busy: boolean) => void) {
       const description = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = doc.name;
       const detail = document.createElement('span');
-      detail.textContent = `Revision ${doc.revision} · ${doc.learned ? `${doc.tokenCount} learned words` : 'Not learned'}`;
+      detail.textContent = `Revision ${doc.revision} · ${doc.learned ? `${doc.tokenCount} learned words${doc.indexMaxN < 7 ? ' · N=4–7 pending · Save again with learning on to upgrade' : ' · N=1–7 ready'}` : 'Not learned'}`;
       description.append(title, detail);
       const actions = document.createElement('div'); actions.className = 'source-actions';
       const label = document.createElement('label'), enabled = document.createElement('input');

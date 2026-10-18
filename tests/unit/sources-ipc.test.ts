@@ -26,7 +26,7 @@ const frame = { url: entry };
 const contents = { mainFrame: frame };
 const window = { isDestroyed: () => false, webContents: contents } as unknown as BrowserWindow;
 const event = { sender: contents, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-const store = { list: vi.fn(), delete: vi.fn(), reindex: vi.fn(), setEnabled: vi.fn() };
+const store = { list: vi.fn(), storageUsage: vi.fn(), checkFiles: vi.fn(), importFiles: mocks.import, clearUnavailable: mocks.clear, delete: vi.fn(), reindex: vi.fn(), setEnabled: vi.fn() };
 
 function call(channel: string, input = event, ...args: unknown[]): unknown {
   return mocks.handlers.get(channel)!(input, ...args);
@@ -35,7 +35,7 @@ function call(channel: string, input = event, ...args: unknown[]): unknown {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.handlers.clear();
-  store.list.mockReturnValue([]);
+  store.list.mockReturnValue([]); store.checkFiles.mockReturnValue([]);
   mocks.dialog.mockResolvedValue({ canceled: true, filePaths: [] });
   registerSourcesIpc(() => window, entry, () => store as unknown as SourceStore);
 });
@@ -44,6 +44,13 @@ describe('source IPC boundary', () => {
   it('exposes only named source operations and lists metadata from the store', async () => {
     expect([...mocks.handlers.keys()]).toEqual(Object.values(sourceChannels));
     await expect(call(sourceChannels.list)).resolves.toEqual({ ok: true, value: [] });
+  });
+  it('returns only fixed database usage metadata and sanitizes measurement failures', async () => {
+    const usage = { databaseBytes: 4096, walBytes: 100, shmBytes: 32, totalBytes: 4228 };
+    store.storageUsage.mockResolvedValueOnce(usage).mockRejectedValueOnce(new Error('/private/database.sqlite3'));
+    await expect(call(sourceChannels.storage)).resolves.toEqual({ ok: true, value: usage });
+    expect(store.storageUsage).toHaveBeenCalledExactlyOnceWith();
+    await expect(call(sourceChannels.storage)).resolves.toEqual({ ok: false, error: 'Could not update local sources. Please try again.' });
   });
 
   it('uses a parented TXT/MD OS picker and honors cancellation without reading a file', async () => {
@@ -59,10 +66,10 @@ describe('source IPC boundary', () => {
     mocks.dialog.mockResolvedValue({ canceled: false, filePaths: ['/explicitly/chosen.txt'] });
     mocks.import.mockResolvedValue({ imported: 1, unchanged: 0, canceled: false, errors: [] });
     await expect(call(sourceChannels.import)).resolves.toMatchObject({ ok: true, value: { imported: 1 } });
-    expect(mocks.import).toHaveBeenCalledExactlyOnceWith(['/explicitly/chosen.txt'], store);
+    expect(mocks.import).toHaveBeenCalledExactlyOnceWith(['/explicitly/chosen.txt']);
   });
 
-  it.each([sourceChannels.list, sourceChannels.checkFiles, sourceChannels.import])('rejects injected renderer paths or SQL on %s', (channel) => {
+  it.each([sourceChannels.list, sourceChannels.progress, sourceChannels.storage, sourceChannels.checkFiles, sourceChannels.import])('rejects injected renderer paths or SQL on %s', (channel) => {
     expect(() => call(channel, event, '/etc/passwd')).toThrow('no arguments');
     expect(mocks.dialog).not.toHaveBeenCalled();
     expect(mocks.import).not.toHaveBeenCalled();
@@ -114,7 +121,7 @@ describe('source IPC boundary', () => {
     let finish!: () => void;
     mocks.clear.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
     const pending = call(sourceChannels.clearUnavailable, event, id);
-    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(store, id);
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(id);
     await expect(call(sourceChannels.delete, event, id)).resolves.toMatchObject({ ok: false });
     await expect(call(sourceChannels.checkFiles)).resolves.toMatchObject({ ok: true });
     finish();

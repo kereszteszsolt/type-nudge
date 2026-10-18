@@ -3,11 +3,12 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtemp, readFile, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile, mkdir, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { SourceStore } from '../../src/main/storage/store';
 import { importSelectedFiles } from '../../src/main/storage/import';
+import { defaultPredictionSettings } from '../../src/shared/prediction';
 import { importLimits } from '../../src/shared/sources';
 
 let directory: string;
@@ -43,19 +44,34 @@ function revision(): string {
 }
 
 describe('real SQLite source storage', () => {
+  it('measures the actual database, WAL and SHM files without changing counts or revision', async () => {
+    store.replace('size', 'size.txt', 'a b c d e f g '.repeat(20));
+    const filename = path.join(directory, 'sources.sqlite3');
+    const before = revision(), counts = grams(store.list()[0]!.id, 7);
+    const [database, wal, shm] = await Promise.all([stat(filename), stat(filename + '-wal'), stat(filename + '-shm')]);
+    expect(await store.storageUsage()).toEqual({ databaseBytes: database.size, walBytes: wal.size,
+      shmBytes: shm.size, totalBytes: database.size + wal.size + shm.size });
+    expect(revision()).toBe(before); expect(grams(store.list()[0]!.id, 7)).toEqual(counts);
+    const separate = new SourceStore(path.join(directory, 'closed.sqlite3'));
+    separate.close();
+    const bytes = (await stat(path.join(directory, 'closed.sqlite3'))).size;
+    expect(await separate.storageUsage()).toEqual({ databaseBytes: bytes, walBytes: 0, shmBytes: 0, totalBytes: bytes });
+    await rm(path.join(directory, 'closed.sqlite3'));
+    await expect(separate.storageUsage()).rejects.toThrow('Could not measure local database size');
+  });
   it('persists source/N preferences across reopen without enabling learning or changing counts', () => {
     store.replace('settings-fixture', 'fixture.txt', 'we write words');
     const source = store.list()[0]!;
     const counts = grams(source.id, 2);
-    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'imported', enabledN: [1, 2, 3] });
-    expect(store.setPredictionSettings({ sourceMode: 'combined', enabledN: [3, 1] })).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
-    expect(() => store.setPredictionSettings({ sourceMode: 'personal', enabledN: [] })).toThrow();
-    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
+    expect(store.getPredictionSettings()).toEqual(defaultPredictionSettings);
+    expect(store.setPredictionSettings({ ...defaultPredictionSettings, sourceMode: 'combined', maxN: 7 })).toEqual({ ...defaultPredictionSettings, sourceMode: 'combined', maxN: 7 });
+    expect(() => store.setPredictionSettings({ ...defaultPredictionSettings, sourceMode: 'personal', maxN: 0 } as never)).toThrow();
+    expect(store.getPredictionSettings()).toEqual({ ...defaultPredictionSettings, sourceMode: 'combined', maxN: 7 });
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get()).toEqual({ value: 'false' });
     expect(grams(source.id, 2)).toEqual(counts);
     store.close();
     store = new SourceStore(path.join(directory, 'sources.sqlite3'));
-    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'combined', enabledN: [1, 3] });
+    expect(store.getPredictionSettings()).toEqual({ ...defaultPredictionSettings, sourceMode: 'combined', maxN: 7 });
   });
 
   it('toggles only the selected source, preserving all counts/revisions and applying every source mode', () => {
@@ -84,16 +100,16 @@ describe('real SQLite source storage', () => {
   });
 
   it('rolls back both preference fields together on a failed settings write', () => {
-    inspection.exec("CREATE TRIGGER reject_setting BEFORE UPDATE ON settings WHEN new.key = 'enabledN' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END");
-    expect(() => store.setPredictionSettings({ sourceMode: 'combined', enabledN: [2] })).toThrow();
-    expect(store.getPredictionSettings()).toEqual({ sourceMode: 'imported', enabledN: [1, 2, 3] });
+    inspection.exec("CREATE TRIGGER reject_setting BEFORE UPDATE ON settings WHEN new.key = 'poolSize' BEGIN SELECT RAISE(ABORT, 'fixture failure'); END");
+    expect(() => store.setPredictionSettings({ ...defaultPredictionSettings, sourceMode: 'combined', maxN: 2 })).toThrow();
+    expect(store.getPredictionSettings()).toEqual(defaultPredictionSettings);
   });
 
   it('migrates a persistent DB with consent off, all N sizes, constraints and lookup indexes', () => {
-    expect(inspection.pragma('user_version', { simple: true })).toBe(3);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(5);
     expect(inspection.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get()).toEqual({ value: 'false' });
-    expect(inspection.prepare("SELECT value FROM settings WHERE key = 'enabledN'").get()).toEqual({ value: '[1,2,3]' });
+    expect(inspection.prepare("SELECT value FROM settings WHERE key = 'maxN'").get()).toEqual({ value: '3' });
     expect(inspection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all())
       .toEqual(['documents', 'imported_files', 'ngrams', 'personal_documents', 'settings', 'sources'].map((name) => ({ name })));
     expect(() => inspection.prepare('INSERT INTO ngrams VALUES (?, 4, ?, ?, ?, 1)').run('unknown', '', 'a', 'a')).toThrow();
@@ -215,9 +231,9 @@ describe('real SQLite source storage', () => {
   });
 
   it('does not modify or downgrade a newer schema', () => {
-    inspection.pragma('user_version = 4');
+    inspection.pragma('user_version = 6');
     expect(() => new SourceStore(path.join(directory, 'sources.sqlite3'))).toThrow('newer version');
-    expect(inspection.pragma('user_version', { simple: true })).toBe(4);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(6);
   });
 
   it('enforces source count and cumulative stored-text limits without damaging existing sources', () => {
@@ -355,13 +371,13 @@ describe('bounded explicit file import', () => {
     await importSelectedFiles([selected], store);
     const original = store.list();
     await writeFile(selected, 'word '.repeat(importLimits.tokens + 1));
-    expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('250,000');
+    expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('500,000');
     await writeFile(selected, 'a'.repeat(importLimits.wordCodePoints + 1));
     expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('128-character');
     expect(store.list()).toEqual(original);
   });
 
-  it.each([102_400, 250_000])('imports %i words completely and keeps reimport/reindex counts stable', async (tokens) => {
+  it.each([102_400, 500_000])('imports %i words completely and keeps reimport/reindex counts stable', async (tokens) => {
     const body = 'word '.repeat(tokens);
     const selected = await file('large-valid.txt', body);
     expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 1, errors: [] });
@@ -369,7 +385,7 @@ describe('bounded explicit file import', () => {
     expect(source.tokenCount).toBe(tokens);
     expect(inspection.prepare('SELECT body_text AS text, byte_length AS bytes FROM documents WHERE source_id = ?').get(source.id))
       .toEqual({ text: body, bytes: tokens * 5 });
-    const expected = [1, 2, 3].map((n) => ({ n, frequency: tokens - n + 1 }));
+    const expected = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ n, frequency: tokens - n + 1 }));
     const frequencies = () => inspection.prepare('SELECT n, frequency FROM ngrams WHERE source_id = ? ORDER BY n').all(source.id);
     expect(frequencies()).toEqual(expected);
     expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 0, unchanged: 1, errors: [] });
@@ -377,7 +393,7 @@ describe('bounded explicit file import', () => {
     await rm(selected);
     expect(store.reindex(source.id)).toMatchObject({ revision: 2, tokenCount: tokens, contentHash: source.contentHash });
     expect(frequencies()).toEqual(expected);
-  });
+  }, 30_000);
 
   it('accepts exact 5 MiB files and a 10 MiB selection without truncation', async () => {
     const header = 'we write words.\n';

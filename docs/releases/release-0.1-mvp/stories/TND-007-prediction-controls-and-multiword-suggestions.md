@@ -2,11 +2,11 @@
 
 ## Status
 
-**Planned — specification only.** Requested on 2026-10-18 after TND-001–006 and their import/source-management follow-ups. Application implementation, migration, performance measurements and packaging for TND-007 are **Not run**. The current executable still has N=1/2/3, a 250,000-word limit and single-word suggestions.
+**Implemented — locally verified on Windows x64 and Linux x64/WSL2 (WSLg/Xvfb), 2026-10-18.** Approved after specification commit `84d7ed3`. The normal Windows package contains the 0–250× multiplier/size follow-up, with passing final-location control tests on Windows x64, including the wider two-column Settings panel and About-only maintainer-support link. Earlier Linux evidence covers the base implementation; Linux follow-up checks were not rerun. Actual tests, migration/resource evidence and remaining platform limits are recorded in verification; no commit or publication is automatic.
 
-The user confirmed that selected indexed files form a **virtual combined model**: equal N/context/next-word entries contribute summed counts at prediction time. The revised design takes a separate top-X pool for every usable N from that combined model, merges equal words by summing their admitted counts, retains the final top X and samples **weighted by final score**. This replaces the earlier proposed first-successful-order backoff; all usable orders contribute. Numeric defaults and extra shortcuts below are proposals for implementation approval, not existing behavior.
+The user confirmed that selected indexed files form a **virtual combined model**: equal N/context/next-word entries contribute summed counts at prediction time. The revised design takes a separate top-X pool for every usable N from that combined model, multiplies admitted counts by explicit per-N settings (default 1×), merges equal words by summing their scaled contributions, retains the final top X and samples **weighted by final score**. This replaces the earlier proposed first-successful-order backoff; all usable orders contribute. The defaults and shortcuts below are included in the approved implementation scope.
 
-Planning checks are recorded in [verification](../verification.md#tnd-007--specification-2026-10-18).
+Implementation checks are recorded in [verification](../verification.md#tnd-007--implementation-2026-10-18).
 
 ## User story
 
@@ -40,9 +40,9 @@ At every generated position:
 
 1. Use the last at most six completed words of the current real + virtual context. All orders 1 through the configured maximum are enabled; use every order for which enough context exists.
 2. Independently for **each** usable N, take its own N-1-word context suffix (empty for N=1), apply typed-prefix matching, **sum frequencies across all eligible sources**, deduplicate by normalized word, rank by summed count descending and stable BINARY word order for ties, then retain at most X words. Empty orders contribute nothing; a match at a larger N never suppresses smaller orders.
-3. Merge these per-N top-X pools by word. A word's **final score is the sum of its admitted per-N counts**. Counts below an N's own top-X cutoff contribute zero; do not rescore omitted rows after taking the union. Different orders can nominate different words.
+3. Merge these per-N top-X pools by word. A word's **final score is the sum of its admitted per-N counts multiplied by each N’s configured scale**. Counts below an N's own top-X cutoff contribute zero; do not rescore omitted rows after taking the union. Different orders can nominate different words.
 4. Remove order identity from the merged candidate entries: one word, one summed score, with a deterministic display spelling. Rank by final score and the same stable word tie-break, then keep the **final top X**.
-5. Sample one word from that final pool, weighted by its final score. No per-order normalization, higher-N multiplier or file-average weighting is implied.
+5. Sample one word from that final pool, weighted by its final score. No automatic per-order normalization, hidden higher-N multiplier or file-average weighting is implied; explicit per-N multipliers default to 1×.
 6. Append the chosen full word to the virtual context and repeat the entire per-N/merge/final-top-X process with an empty prefix for the next position. No words are sampled from a stale first-position pool.
 
 The pool is contextual, rather than a single global list of the most common words. The same X caps each per-N pool and the final pool. At most M*X words enter the intermediate union before deduplication (up to 700 with M=7/X=100); at most X remain after the final cutoff. Pools can remain in main: SQLite aggregates files and limits per-N results, and main merges the bounded records without loading entire source indexes into renderer memory.
@@ -61,9 +61,11 @@ Regression example for summation **before** LIMIT: with X=2, file A has `alpha:8
 
 ### Settings and help
 
-- A compact **Settings** button opens a dismissible right-side prediction panel. It is closed by default so settings do not remain above the editor. On narrow windows use a usable drawer/dialog layout with scrolling, visible labels and keyboard focus management.
+- A compact **Settings** button opens a dismissible right-side prediction panel. It is closed by default so settings do not remain above the editor. Use up to 840 px width with parallel general-options / N-gram-multiplier columns; below a 760 px viewport stack them with scrolling, visible labels and keyboard focus management. The maintainer’s Ways to support action stays in About, with no editor-footer shortcut.
 - Move existing source-mode selection and N controls into that panel. Replace independent N checkboxes with a maximum-N slider: selecting M enables exactly `1..M`; the current value and effective orders are visible.
 - Add controls for pool size X, preview word count and the number of words accepted by the partial-accept command. Persist these settings locally; shrinking the preview limit clamps the partial-accept count to a valid value.
+- Add seven synchronized slider/number pairs for N=1–7, integers **0–250×**, each default **1×**. Zero removes that order’s virtual contribution; if all usable orders have zero weight, stop without a suggestion or hidden fallback. Persist the chosen values, apply them only to virtual scores after per-N top X and before final top X, invalidate merged caches/previews and preserve stored N-gram frequencies, source/index revisions and consent without reindexing.
+- Show measured **database/WAL/SHM bytes and total** in Settings, with Refresh size; missing sidecars are zero and measurement errors are recoverable. This is separate from the retained-text quota.
 - Keep a small **Help / ?** button discoverable. Help explains accepting one/several/all words, next suggestion, dismissal, source selection, maximum N and both pool cutoffs. Larger N uses more preceding words and adds evidence alongside lower orders rather than guaranteeing grammatical output or exclusive priority.
 - Help and Settings support keyboard opening/closing, Escape and focus restoration. Commands operate only in the focused editor when a valid preview exists; normal editing, focus traversal, save, undo/redo and IME remain intact otherwise.
 
@@ -74,21 +76,22 @@ Regression example for summation **before** LIMIT: with X=2, file A has `alpha:8
 - Continue ignoring/normalizing supported import controls, honoring UTF-8/path checks and leaving selected original files unchanged.
 - Index N=1–7 for newly indexed contributions independently of the current slider value, so lowering/raising maximum N does not itself require rebuilding sources.
 
-## Proposed settings and commands
+## Settings and commands
 
-The numeric defaults/bounds and new shortcuts are proposed for approval; weighted sampling from the final cross-order pool is confirmed. None of this is implemented yet.
+The approved defaults/bounds and shortcuts are implemented below; actual platform checks are recorded in verification.
 
-| Setting | Proposed range | Proposed initial value |
+| Setting | Range | Initial value |
 | --- | --- | --- |
 | Maximum N | 1–7; enables every lower order | 3 for a new profile; migrate an old selection to its highest selected N |
+| Per-N multiplier (seven controls) | Integer 0–250×, slider or manual number; virtual scoring only | 1× for each N |
 | Candidate pool X | 1–100; applied per N and again after merging | 10 |
 | Preview words | 1–10 | 3 |
 | Words per partial-accept command | 1 through preview limit | 2, clamped to preview limit |
 | Sampling | Final-score-weighted within the merged final top-X pool | Confirmed by the user |
 
-A final pool entry with score 11 has sampling weight 11; a word's probability is its final score divided by the sum of the final pool's scores. With X=1, the final choice is deterministic. Raw-count addition gives higher-order matches an opportunity to add evidence, but does not guarantee that a rare higher-order-only word survives the final cutoff; see the guide's limitations.
+A final pool entry with score 11 has sampling weight 11; a word's probability is its final score divided by the sum of the final pool's scores. With X=1, the final choice is deterministic. Raw-count addition at 1× and explicit scaled contributions give higher-order matches an opportunity to add evidence, but do not guarantee that a rare higher-order-only word survives the final cutoff; see the guide's limitations.
 
-| Action | Proposed shortcut | Behavior |
+| Action | Shortcut | Behavior |
 | --- | --- | --- |
 | Accept next pending word | `Tab` | One word / missing suffix |
 | Next suggestion | `Alt + Down` | Generate another eligible continuation without changing the document |
@@ -100,26 +103,29 @@ Verify these bindings on actual supported desktop targets and display the actual
 
 ## Acceptance criteria
 
-- [ ] Settings and Help are accessible, dismissible, correctly focused and usable in a 520 × 480 window; main editing controls stay available with the panel closed.
-- [ ] Maximum N is validated as an integer 1–7; N=1 through that maximum are always enabled. Invalid/fractional/out-of-range settings are rejected at the main-process boundary.
-- [ ] Real SQLite fixtures demonstrate counts for every N through 7, six-word context suffixes, sentence/document boundaries, Unicode/prefix completion and contributions from all usable orders. An available high-N pool must not suppress lower-N pools; insufficient/empty orders are skipped.
-- [ ] Per-source counts remain independent, while prediction pools use the virtual combined model: `[a,b] -> C: 7+4=11`, absent contexts contribute zero, duplicates combine, and aggregate-before-LIMIT retains candidates outside each file's individual top X.
-- [ ] X is validated and applied twice at every position: to each per-N pool after cross-file aggregation and to the merged-score pool. Tests cover different per-N words, duplicate-word score sums, omitted counts contributing zero, stable ties and the final cutoff. Final entries have one word/score and no N identity; source activation/mode/consent applies at every stage, with cache/preview invalidation on source/revision changes.
-- [ ] Sampling has a documented approved distribution; tests inject controlled random values/seed and verify exact selection boundaries, top-X membership and singleton behavior without statistical/flaky assertions. Cache deterministic pools rather than freezing random output indefinitely.
-- [ ] Multi-word fixtures prove that pending words influence every subsequent per-N pool and final mixture, prefix matching applies only to the first incomplete word, short contexts skip unusable N, and an empty union stops the sequence.
-- [ ] One-word, K-word and whole-preview acceptance preserve the remaining sequence, spelling, spaces, selection and isolated undo. Next/dismiss do not modify the document; unaccepted text is neither saved, copied nor learned.
-- [ ] Delayed replies, rapid typing, settings/source changes, selection, blur and synthetic composition cannot display or insert obsolete sequences. The editor remains usable while indexing/prediction work is pending.
-- [ ] Persisted settings migrate from schema-3 independent N selections without deleting sources, saved notes, imported-file metadata or learned contributions; sparse selections become contiguous through their previous maximum.
-- [ ] The N<=3 schema constraint and index format are upgraded safely. Preserve existing N=1–3 data and expose which retained contributions need rebuilding for N=4–7. Provide an explicit retained-copy rebuild path, with progress, before claiming all older sources are N=7-ready; never bulk-learn previously unlearned personal notes. Re-saving an already learned unchanged document can upgrade an obsolete contribution when consent is on.
-- [ ] Exact 500,000-word and byte boundaries pass real SQLite checks; 500,001 words and over-limit bytes fail without partial updates. Reimport/reindex/re-save remain transactional replacements, and deleting one source removes its N=1–7 counts without affecting others.
-- [ ] Large-source indexing uses bounded batches/background work outside the renderer and keeps editor/main request handling usable; failure/cancellation cannot publish half-built counts. Document the chosen main/worker coordination instead of merely raising constants around an unbounded all-N Map.
-- [ ] Measure representative repeated, varied and unique-word corpora up to 500,000 words and actual byte limits, with peak memory, index/WAL size, indexing time and broad-prefix/long-context multi-step prediction costs. No latency/memory claim is made before these checks.
-- [ ] Run focused unit/real SQLite tests first, full regressions, and actual packaged Windows x64 / Linux x64/WSLg UI/native-module checks where available. Record commands/results/environment, migrations, screenshots and all Not run cases in verification; deliver the normal Windows app directory without a second variant.
-- [ ] Update current prediction/storage/editor/security documentation and README after implementation, preserving branding, SPDX notices, Mermaid blocks and support/license sections. Request separate commit approval.
+- [x] Settings and Help are accessible, dismissible, correctly focused and usable in a 520 × 480 window; main editing controls stay available with the panel closed.
+- [x] Maximum N is validated as an integer 1–7; N=1 through that maximum are always enabled. Invalid/fractional/out-of-range settings are rejected at the main-process boundary.
+- [x] Real SQLite fixtures demonstrate counts for every N through 7, six-word context suffixes, sentence/document boundaries, Unicode/prefix completion and contributions from all usable orders. An available high-N pool must not suppress lower-N pools; insufficient/empty orders are skipped.
+- [x] Per-source counts remain independent, while prediction pools use the virtual combined model: `[a,b] -> C: 7+4=11`, absent contexts contribute zero, duplicates combine, and aggregate-before-LIMIT retains candidates outside each file's individual top X.
+- [x] X is validated and applied twice at every position: to each per-N pool after cross-file aggregation and to the merged-score pool. Tests cover different per-N words, duplicate-word score sums, omitted counts contributing zero, stable ties and the final cutoff. Final entries have one word/score and no N identity; source activation/mode/consent applies at every stage, with cache/preview invalidation on source/revision changes.
+- [x] Sampling has a documented approved distribution; tests inject controlled random values/seed and verify exact selection boundaries, top-X membership and singleton behavior without statistical/flaky assertions. Cache deterministic pools rather than freezing random output indefinitely.
+- [x] Multi-word fixtures prove that pending words influence every subsequent per-N pool and final mixture, prefix matching applies only to the first incomplete word, short contexts skip unusable N, and an empty union stops the sequence.
+- [x] One-word, K-word and whole-preview acceptance preserve the remaining sequence, spelling, spaces, selection and isolated undo. Next/dismiss do not modify the document; unaccepted text is neither saved, copied nor learned.
+- [x] Delayed replies, rapid typing, settings/source changes, selection, blur and synthetic composition cannot display or insert obsolete sequences. The editor remains usable while indexing/prediction work is pending.
+- [x] Persisted settings migrate from schema-3 independent N selections without deleting sources, saved notes, imported-file metadata or learned contributions; sparse selections become contiguous through their previous maximum.
+- [x] The N<=3 schema constraint and index format are upgraded safely. Preserve existing N=1–3 data and expose which retained contributions need rebuilding for N=4–7. Provide an explicit retained-copy rebuild path, with progress, before claiming all older sources are N=7-ready; never bulk-learn previously unlearned personal notes. Re-saving an already learned unchanged document can upgrade an obsolete contribution when consent is on.
+- [x] Exact 500,000-word and byte boundaries pass real SQLite checks; 500,001 words and over-limit bytes fail without partial updates. Reimport/reindex/re-save remain transactional replacements, and deleting one source removes its N=1–7 counts without affecting others.
+- [x] Large-source indexing uses bounded batches/background work outside the renderer and keeps editor/main request handling usable; failure/cancellation cannot publish half-built counts. Document the chosen main/worker coordination instead of merely raising constants around an unbounded all-N Map.
+- [x] Measure representative repeated, varied and unique-word corpora up to 500,000 words and actual byte limits, with peak memory, index/WAL size, indexing time and broad-prefix/long-context multi-step prediction costs. No latency/memory claim is made before these checks.
+- [x] Run focused unit/real SQLite tests first, full regressions, and actual packaged Windows x64 / Linux x64/WSL2 (WSLg/Xvfb) UI/native-module checks where available. Record commands/results/environment, migrations, screenshots and all Not run cases in verification; deliver the normal Windows app directory without a second variant.
+- [x] Update current prediction/storage/editor/security documentation and README after implementation, preserving branding, SPDX notices, Mermaid blocks and support/license sections. Request separate commit approval.
+
+- [x] Approved follow-up: seven 0–250× slider/number controls, default 1×, survive restart and affect final pool scores without changing stored counts or index/source revisions; schema-4 preferences migrate safely.
+- [x] Approved follow-up: fixed-path DB/WAL/SHM size metadata is measured and displayed with a refresh control; renderer paths and invalid scales are rejected.
 
 ## Implementation outline and risks
 
-Once implementation is approved, this story replaces the earlier independent-N subset, first-successful-order backoff, top-three and single-word limits with the specified contiguous N=1–7, bounded top-X pool and multi-word preview behavior. Those old rules still describe the current executable until TND-007 is implemented and verified; other security/privacy/storage requirements stay in force.
+The approved implementation replaces the earlier independent-N subset, first-successful-order backoff, top-three and single-word limits with the specified contiguous N=1–7, bounded top-X pool and multi-word preview behavior. Those old rules describe the earlier executable; other security/privacy/storage requirements stay in force.
 
 1. Extend shared settings/types/request validation and define the bounded multi-word result/acceptance contract. Main resolves source IDs, pool bounds and persisted settings; renderer cannot inject SQL, arbitrary paths, unbounded context or unauthorized source sets.
 2. Migrate SQLite constraints/settings and track index-format coverage. Keep per-source contributions and the old committed index available until a replacement is complete. Preserve imported paths and personal-learning semantics from schema 3.
@@ -134,7 +140,7 @@ The size risk is material: one 500,000-word sentence can contribute up to **3,49
 
 ## Additional suggestions — optional, not acceptance criteria
 
-- A compact explanation of final pool size/scores can help writers understand the mixture without attributing its final words to one N. Stronger higher-N weighting would be a separate policy choice; the present design uses raw-count sums.
+- A compact explanation of final pool size/scores can help writers understand the mixture without attributing its final words to one N. The approved follow-up adds explicit per-N virtual multipliers; automatic normalization remains outside scope.
 - Consider an optional repetition penalty if measurements show repeated-word loops. Keep natural repeated words possible; do not introduce a hard hidden word ban or alter frequency counts.
 
 ## Out of scope

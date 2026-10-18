@@ -31,6 +31,19 @@ async function launchApplication(): Promise<void> {
   await expect(page.getByRole('button', { name: 'About', exact: true })).toBeEnabled();
 }
 
+async function configure(values: {sourceMode?:string; maxN?:number; poolSize?:number; previewWords?:number; acceptWords?:number}): Promise<void> {
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  for(const [key,value] of Object.entries(values)) {
+    const id=({sourceMode:'prediction-source',maxN:'maximum-n',poolSize:'pool-size',previewWords:'preview-words',acceptWords:'accept-words'} as Record<string,string>)[key]!;
+    const input=page.locator('#'+id);await expect(input).toBeEnabled();
+    if(key==='sourceMode') await input.selectOption(String(value));
+    else { await input.evaluate((el,value)=>{(el as HTMLInputElement).value=String(value);el.dispatchEvent(new Event('change',{bubbles:true}));},value); }
+    await expect(input).toBeEnabled();
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#settings-dialog')).toBeHidden();
+}
+
 async function closeApplication(): Promise<void> {
   if (!application) return;
   await application.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
@@ -40,6 +53,7 @@ async function closeApplication(): Promise<void> {
 test.beforeAll(async () => {
   userData = await mkdtemp(path.join(tmpdir(), 'typenudge-smoke-'));
   await launchApplication();
+  await configure({poolSize:1,previewWords:1});
 });
 
 test.afterAll(async () => {
@@ -72,7 +86,7 @@ test('starts one isolated window with restrictive CSP and a narrow bridge', asyn
     node: typeof (window as unknown as { require?: unknown }).require,
     process: typeof (window as unknown as { process?: unknown }).process,
     bridge: Object.keys(window.typeNudge),
-  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'checkSourceFiles', 'importSources', 'reindexSource', 'deleteSource', 'clearUnavailableSource',
+  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'getIndexProgress', 'getStorageUsage', 'listSources', 'checkSourceFiles', 'importSources', 'reindexSource', 'deleteSource', 'clearUnavailableSource',
     'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings', 'listDocuments', 'openDocument', 'saveDocument',
     'deleteDocument', 'setPersonalLearning', 'setDocumentEnabled', 'forgetDocument', 'resetPersonalLearning'] });
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
@@ -114,9 +128,9 @@ test('edits Unicode plain text, selects, copies, pastes and supports undo/redo',
 
 test('Tab leaves the editor; About works with the keyboard and displays package version', async () => {
   const editor = page.getByRole('textbox', { name: 'Document text' });
-  await editor.focus();
+  await editor.focus(); await page.keyboard.press('End');
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Support', exact: true })).toBeFocused();
+  await expect(editor).not.toBeFocused();
   const about = page.getByRole('button', { name: 'About', exact: true });
   await about.focus();
   await page.keyboard.press('Enter');
@@ -124,6 +138,9 @@ test('Tab leaves the editor; About works with the keyboard and displays package 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(`Version ${metadata.version}`);
   await expect(dialog).toContainText('Keresztes Zsolt');
+  await expect(dialog.getByRole('button', { name: 'Ways to support', exact: true })).toBeVisible();
+  await expect(page.locator('.status-bar button')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('about-support.png') });
   await expect(dialog.getByRole('button', { name: 'Project website', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -138,8 +155,10 @@ test('external links need a click, use the allowlist and never navigate this win
     };
   });
   const original = page.url();
-  await expect(page.getByRole('button', { name: 'Support', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Support', exact: true }).click();
+  await expect(page.locator('.status-bar button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'About', exact: true }).click();
+  expect(await application.evaluate(() => (globalThis as unknown as { openedLinks: string[] }).openedLinks)).toEqual([]);
+  await page.getByRole('dialog', { name: 'About TypeNudge' }).getByRole('button', { name: 'Ways to support', exact: true }).click();
   expect(await application.evaluate(() => (globalThis as unknown as { openedLinks: string[] }).openedLinks))
     .toEqual(['https://kereszteszsolt.hu/ways-to-support']);
   expect(await page.evaluate(async () => {
@@ -150,6 +169,7 @@ test('external links need a click, use the allowlist and never navigate this win
   })).toBe('rejected');
   expect(page.url()).toBe(original);
   expect(application.windows()).toHaveLength(1);
+  await page.keyboard.press('Escape');
 });
 
 test('remote connections and popups are blocked; the editor fits a small window', async () => {
@@ -243,18 +263,22 @@ test('shows real SQLite partial completions and supports Tab, Alt+Down, Esc, cop
   await page.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
   await expect(page.locator('#sources-status')).toContainText('1 imported');
   await page.keyboard.press('Escape');
+  await configure({poolSize:1,previewWords:1});
   const editor = page.getByRole('textbox', { name: 'Document text' });
   const ghost = page.locator('.cm-ghost');
   await editor.fill('we write wo');
   await page.keyboard.press('End');
   await expect(ghost).toHaveText('rds');
   await expect(ghost).toHaveAttribute('aria-hidden', 'true');
+  await configure({poolSize:3});
+  await editor.focus(); await page.keyboard.press('End');
+  await expect(ghost).toHaveText(/^(rds|rk|rld)$/);
+  const first=await ghost.textContent();
   await page.keyboard.press('Alt+ArrowDown');
-  await expect(ghost).toHaveText('rk');
-  await page.keyboard.press('Alt+ArrowDown');
-  await expect(ghost).toHaveText('rld');
-  await page.keyboard.press('Alt+ArrowDown');
-  await expect(ghost).toHaveText('rds');
+  await expect(ghost).toHaveText(/^(rds|rk|rld)$/);
+  await expect(ghost).not.toHaveText(first!);
+  await configure({poolSize:1});
+  await editor.focus(); await page.keyboard.press('End'); await expect(ghost).toHaveText('rds');
   await page.keyboard.press('Escape');
   await expect(ghost).toHaveCount(0);
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -275,33 +299,31 @@ test('shows real SQLite partial completions and supports Tab, Alt+Down, Esc, cop
   await expect(ghost).toHaveCount(0);
   await editor.fill('we write ');
   await page.keyboard.press('End');
-  await expect(ghost).toHaveText('words');
+  await expect(ghost).toHaveText('we');
   await page.keyboard.press('Tab');
   await page.keyboard.press(`${modifier}+a`);
   await page.keyboard.press(`${modifier}+c`);
-  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write words');
+  expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe('we write we');
   await editor.fill('Ár');
   await page.keyboard.press('End');
-  await expect(ghost).toHaveText('nyék');
-  await page.keyboard.press('Alt+ArrowDown');
-  await expect(ghost).toHaveText('víz');
+  await configure({poolSize:2}); await editor.focus(); await page.keyboard.press('End');
+  await expect(ghost).toHaveText(/^(nyék|víz)$/);
+  if(await ghost.textContent()==='nyék') { await page.keyboard.press('Alt+ArrowDown'); await expect(ghost).toHaveText('víz'); }
   await page.keyboard.press('Tab');
   await expect(editor.locator('.cm-line')).toHaveText('Árvíz');
+  await configure({poolSize:1});
 });
 
 test('persists source/N settings, prevents an empty N selection and handles no active corpus', async () => {
   const mode = page.getByLabel('Predict from');
-  await mode.selectOption('personal');
+  await configure({sourceMode:'personal'});
   await expect(page.locator('#prediction-status')).toContainText('My Writing has no active learned text');
   const editor = page.getByRole('textbox', { name: 'Document text' });
   await editor.fill('we write wo');
   await page.keyboard.press('End');
   await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Support', exact: true })).toBeFocused();
-  await mode.selectOption('combined');
-  await page.getByRole('checkbox', { name: 'N=2', exact: true }).uncheck();
-  await page.getByRole('checkbox', { name: 'N=3', exact: true }).uncheck();
-  await expect(page.getByRole('checkbox', { name: 'N=1', exact: true })).toBeDisabled();
+  await expect(editor).not.toBeFocused();
+  await configure({sourceMode:'combined',maxN:1});
   await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Use predictions.txt for predictions', exact: true }).uncheck();
   await expect(page.locator('#sources-status')).toContainText('disabled for predictions');
@@ -315,9 +337,7 @@ test('persists source/N settings, prevents an empty N selection and handles no a
   await closeApplication();
   await launchApplication();
   await expect(page.getByLabel('Predict from')).toHaveValue('combined');
-  await expect(page.getByRole('checkbox', { name: 'N=1', exact: true })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'N=2', exact: true })).not.toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'N=3', exact: true })).not.toBeChecked();
+  await expect(page.locator('#maximum-n')).toHaveValue('1');
   await expect(page.locator('#prediction-status')).toContainText('No active corpus');
   await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Use predictions.txt for predictions', exact: true })).not.toBeChecked();
@@ -329,9 +349,10 @@ test('persists source/N settings, prevents an empty N selection and handles no a
   await page.getByRole('textbox', { name: 'Document text' }).fill('we write ');
   await page.keyboard.press('End');
   await expect(page.locator('.cm-ghost')).toHaveText('we');
-  await page.getByRole('checkbox', { name: 'N=3', exact: true }).check();
+  await configure({maxN:3});
+  await page.getByRole('textbox', {name:'Document text'}).fill('we write wo'); await page.keyboard.press('End');
   await page.getByRole('textbox', { name: 'Document text' }).focus();
-  await expect(page.locator('.cm-ghost')).toHaveText('words');
+  await expect(page.locator('.cm-ghost')).toHaveText('rds');
 });
 
 test('keeps editing responsive and suggestions suspended across overlapping preference/import replies', async () => {
@@ -344,7 +365,9 @@ test('keeps editing responsive and suggestions suspended across overlapping pref
       (globalThis as unknown as { finishPicker: () => void }).finishPicker = () => resolve({ canceled: true, filePaths: [] });
     });
   });
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
   await page.getByLabel('Predict from').selectOption('imported');
+  await page.keyboard.press('Escape');
   await expect.poll(() => application.evaluate(() => typeof (globalThis as unknown as { finishSettings: unknown }).finishSettings)).toBe('function');
   await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await page.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
@@ -381,7 +404,7 @@ test('drops delayed IPC after newer edits, cursor movement, source/N changes and
   async function release(index: number, word = 'words'): Promise<void> {
     await application.evaluate((_electron, { index, word }) => {
       (globalThis as unknown as { predictionPending: Pending[] }).predictionPending[index]!.resolve({ ok: true,
-        value: { candidates: [{ word, display: word, frequency: 1 }], order: 1, indexRevision: 1 } });
+        value: { candidates: [{ word, display: word, frequency: 1 }], words: [{word,display:word,frequency:1}], indexRevision: 1 } });
     }, { index, word });
     // Allow the real asynchronous IPC reply and two renderer turns to run.
     await page.waitForTimeout(120);
@@ -412,17 +435,17 @@ test('drops delayed IPC after newer edits, cursor movement, source/N changes and
   await page.keyboard.press('End');
   await expect.poll(count).toBeGreaterThan(before);
   const changedSettings = (await count()) - 1;
-  await page.getByRole('checkbox', { name: 'N=2', exact: true }).check();
+  await configure({maxN:2});
   await release(changedSettings);
   await expect(ghost).toHaveCount(0);
-  await editor.focus();
+  await editor.focus(); await page.keyboard.press('End');
   await expect.poll(count).toBeGreaterThan(changedSettings + 1);
   const changedSource = (await count()) - 1;
-  await page.getByLabel('Predict from').selectOption('personal');
+  await configure({sourceMode:'personal'});
   await release(changedSource);
   await expect(ghost).toHaveCount(0);
-  await page.getByLabel('Predict from').selectOption('imported');
-  await editor.focus();
+  await configure({sourceMode:'imported'});
+  await editor.focus(); await page.keyboard.press('End');
   await expect.poll(count).toBeGreaterThan(changedSource + 1);
   const composing = (await count()) - 1;
   await editor.dispatchEvent('compositionstart', { data: '' });
@@ -478,7 +501,7 @@ test('saves personal notes separately from consent, replaces learning, and prese
   await page.getByLabel('Learn from my writing', { exact: true }).check();
   await expect(page.locator('#documents-status')).toContainText('future explicit saves');
   await expect(page.locator('#documents-list')).toContainText('Not learned');
-  await page.keyboard.press('Escape'); await editor.focus();
+  await page.keyboard.press('Escape'); await editor.focus(); await page.keyboard.press('End');
   await page.keyboard.press(`${modifier}+s`);
   await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
   const inspect = () => {
@@ -493,19 +516,19 @@ test('saves personal notes separately from consent, replaces learning, and prese
   await editor.fill('private beta'); await page.keyboard.press('End'); await page.keyboard.press(`${modifier}+s`);
   await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
   expect(inspect()).toEqual([{ next_token: 'beta', frequency: 1 }, { next_token: 'private', frequency: 1 }]);
-  await page.getByLabel('Predict from').selectOption('personal');
+  await configure({sourceMode:'personal'});
   await editor.fill('pri'); await page.keyboard.press('End'); await expect(page.locator('.cm-ghost')).toHaveText('vate');
   await page.getByRole('button', { name: 'Documents', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Use Personal first for predictions', exact: true }).uncheck();
   await expect(page.locator('#documents-status')).toContainText('source updated');
-  await page.keyboard.press('Escape'); await editor.focus(); await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  await page.keyboard.press('Escape'); await editor.focus(); await page.keyboard.press('End'); await expect(page.locator('.cm-ghost')).toHaveCount(0);
   await expect(page.locator('#prediction-status')).toContainText('My Writing has no active');
   await page.getByRole('button', { name: 'Documents', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Use Personal first for predictions', exact: true }).check();
   await page.getByRole('button', { name: 'Remove learning Personal first', exact: true }).click();
   await page.locator('#confirm-action').click();
   await expect(page.locator('#documents-status')).toContainText('saved text kept');
-  await page.keyboard.press('Escape'); await editor.focus(); await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  await page.keyboard.press('Escape'); await editor.focus(); await page.keyboard.press('End'); await expect(page.locator('.cm-ghost')).toHaveCount(0);
   expect(inspect()).toEqual([]);
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();

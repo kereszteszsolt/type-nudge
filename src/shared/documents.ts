@@ -8,7 +8,7 @@ export const documentChannels = {
 } as const;
 export interface DocumentSummary {
   id: string; name: string; revision: number; updatedAt: string;
-  enabled: boolean; learned: boolean; tokenCount: number;
+  indexMaxN: number; enabled: boolean; learned: boolean; tokenCount: number;
 }
 export interface PersonalState { documents: DocumentSummary[]; learning: boolean }
 export interface SavedDocument extends DocumentSummary { text: string }

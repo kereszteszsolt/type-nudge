@@ -11,6 +11,8 @@
 
 ## Storage
 
+The main process delegates only named local operations to a single SQLite-owning worker thread. No worker API is exposed to renderer. Queue length is capped, obsolete queued predictions are coalesced, and numeric progress contains no text or paths. Import/index batches are bounded; worker termination rolls transactions back.
+
 SQLite and saved documents reside in the OS-specific Electron `userData` directory with normal user-level permissions. Do not commit databases, imported text, personal notes, or build artifacts to Git. Provide source deletion and reset of learned content. Explain that backups or normal OS filesystem access may expose the unencrypted DB — do not advertise cryptographic protection that does not exist.
 
 TND-005 saves documents only after Save/Ctrl+S. Prediction IPC still carries only bounded word context; full text crosses the separate validated save call only for that explicit action. Learning is off by default, starts on a future enabled Save and is not activated by source-mode selection. Turning it off pauses personal predictions; per-note forgetting and personal reset remove counts without deleting imports or saved text. Delete removes the selected saved note and its contribution. Window/document switching guards unsaved edits; there is no autosaved draft, background crawler or global keyboard/clipboard hook.
@@ -22,3 +24,5 @@ Accept `.txt` and `.md` only, with explicit UTF-8 decoding, file-count/size caps
 ## Packaging and dependencies
 
 Pin and audit dependencies used for Electron, CodeMirror, SQLite and Forge. Keep security settings intact in packaged builds. Test the native SQLite module in actual desktop packages; development-mode behavior is insufficient evidence. Preserve third-party license notices.
+
+The no-argument `sources:storage` call returns only numeric database/WAL/SHM file lengths from fixed userData paths; it accepts no renderer path and exposes no directory listing. The exact settings contract includes seven integer N multipliers in 0–250; only virtual prediction scores use them, with no change to retained source frequencies or learning consent.

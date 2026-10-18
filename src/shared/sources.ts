@@ -3,6 +3,8 @@
 
 export const sourceChannels = {
   list: 'sources:list',
+  progress: 'sources:progress',
+  storage: 'sources:storage',
   checkFiles: 'sources:check-files',
   import: 'sources:import',
   reindex: 'sources:reindex',
@@ -18,7 +20,7 @@ export const importLimits = {
   personalBytes: 1024 * 1024,
   storedBytes: 32 * 1024 * 1024,
   sources: 100,
-  tokens: 250_000,
+  tokens: 500_000,
   wordCodePoints: 128,
 } as const;
 
@@ -30,6 +32,7 @@ export interface SourceSummary {
   contentHash: string;
   tokenCount: number;
   updatedAt: string;
+  indexMaxN: number;
 }
 
 export type SourceFileStatus = 'available' | 'missing' | 'unavailable' | 'unknown';
@@ -48,7 +51,17 @@ export interface ImportReport {
 
 export type SourceResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
+export interface IndexProgress { readonly words: number; readonly active: boolean }
+export interface StorageUsage {
+  readonly databaseBytes: number;
+  readonly walBytes: number;
+  readonly shmBytes: number;
+  readonly totalBytes: number;
+}
+
 export interface SourcesBridge {
+  getIndexProgress(): Promise<SourceResult<IndexProgress>>;
+  getStorageUsage(): Promise<SourceResult<StorageUsage>>;
   listSources(): Promise<SourceResult<SourceSummary[]>>;
   checkSourceFiles(): Promise<SourceResult<SourceFileSummary[]>>;
   importSources(): Promise<SourceResult<ImportReport>>;

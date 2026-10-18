@@ -8,7 +8,8 @@ import branding from '../../brand/branding.json';
 import { registerAppIpc } from './ipc';
 import { allowRequest, localDevEntry } from './security';
 import { registerSourcesIpc } from './sources-ipc';
-import { SourceStore } from './storage/store';
+import { StorageClient } from './storage/client';
+import type { StoreAccess } from './storage/access';
 import { registerPredictionIpc } from './prediction-ipc';
 import { registerDocumentsIpc } from './documents-ipc';
 
@@ -18,10 +19,11 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-component-update');
 
 let window: BrowserWindow | null = null;
-let store: SourceStore | undefined;
+let storage: StorageClient | undefined;
 
-function getStore(): SourceStore {
-  return store ??= new SourceStore(path.join(app.getPath('userData'), 'typenudge.sqlite3'));
+function getStore(): StoreAccess {
+  storage ??= new StorageClient(path.join(app.getPath('userData'), 'typenudge.sqlite3'), path.join(__dirname, 'storage-worker.js'));
+  return storage.store;
 }
 const entry = MAIN_WINDOW_VITE_DEV_SERVER_URL
   ? localDevEntry(MAIN_WINDOW_VITE_DEV_SERVER_URL)
@@ -97,4 +99,4 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => store?.close());
+app.on('will-quit', () => storage?.close());

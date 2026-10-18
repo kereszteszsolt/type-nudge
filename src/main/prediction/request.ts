@@ -4,6 +4,7 @@
 import { importLimits } from '../../shared/sources';
 import { completeWord, normalizeWord, partialWord } from '../../shared/words';
 import type { NgramOrder, PredictionRequest } from './types';
+import { boundedInteger, validateNgramScales } from '../../shared/prediction';
 
 function word(value: unknown, partial: boolean): string {
   const message = partial ? 'Invalid word prefix.' : 'Context must contain completed words from one sentence.';
@@ -17,18 +18,19 @@ function word(value: unknown, partial: boolean): string {
 export function normalizePredictionRequest(input: unknown): PredictionRequest {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('A prediction request is required.');
   const request = input as Record<string, unknown>;
-  if (Object.keys(request).some((key) => !['prefix', 'context', 'sourceIds', 'enabledN'].includes(key))) throw new Error('Unknown prediction request field.');
-  if (!Array.isArray(request.context) || request.context.length > 2) throw new Error('Provide at most two completed context words.');
+  if (Object.keys(request).some((key) => !['prefix', 'context', 'sourceIds', 'maxN', 'poolSize', 'previewWords', 'ngramScales', 'avoidWord'].includes(key))) throw new Error('Unknown prediction request field.');
+  if (!Array.isArray(request.context) || request.context.length > 6) throw new Error('Provide at most six completed context words.');
   if (!Array.isArray(request.sourceIds) || request.sourceIds.length > importLimits.sources ||
       request.sourceIds.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
     throw new Error('Provide at most 100 valid source IDs.');
   }
-  if (!Array.isArray(request.enabledN) || request.enabledN.length < 1 || request.enabledN.length > 3 ||
-      request.enabledN.some((n) => n !== 1 && n !== 2 && n !== 3)) throw new Error('Enable at least one of N=1, N=2 or N=3.');
+  if (!boundedInteger(request.maxN, 1, 7) || !boundedInteger(request.poolSize, 1, 100) || !boundedInteger(request.previewWords, 1, 10)) throw new Error('Invalid prediction bounds.');
   return {
     prefix: word(request.prefix, true),
     context: request.context.map((token) => word(token, false)),
     sourceIds: [...new Set(request.sourceIds.map((id: string) => id.toLowerCase()))].sort(),
-    enabledN: [...new Set(request.enabledN as NgramOrder[])].sort((a, b) => b - a),
+    maxN: request.maxN as NgramOrder, poolSize: request.poolSize, previewWords: request.previewWords,
+    ngramScales: validateNgramScales(request.ngramScales),
+    ...(request.avoidWord === undefined ? {} : { avoidWord: word(request.avoidWord, false) }),
   };
 }

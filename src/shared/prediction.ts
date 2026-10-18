@@ -3,29 +3,43 @@
 
 import type { SourceResult } from './sources';
 
-export type NgramOrder = 1 | 2 | 3;
+export type NgramOrder = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type NgramScales = readonly [number, number, number, number, number, number, number];
+export const defaultNgramScales: NgramScales = Object.freeze([1, 1, 1, 1, 1, 1, 1]);
 export type SourceMode = 'imported' | 'personal' | 'combined';
 export interface PredictionSettings {
   sourceMode: SourceMode;
-  enabledN: NgramOrder[];
+  maxN: NgramOrder;
+  poolSize: number;
+  previewWords: number;
+  acceptWords: number;
+  ngramScales: NgramScales;
 }
+export const defaultPredictionSettings: Readonly<PredictionSettings> = Object.freeze({
+  sourceMode: 'imported', maxN: 3, poolSize: 10, previewWords: 3, acceptWords: 2, ngramScales: defaultNgramScales,
+});
 export interface PredictionInput {
   readonly prefix: string;
-  // Completed words in the current sentence, oldest first. Never a document body.
+  // At most six completed words in the current sentence, oldest first.
   readonly context: readonly string[];
+  readonly avoidWord?: string;
 }
 export interface PredictionRequest extends PredictionInput {
   readonly sourceIds: readonly string[];
-  readonly enabledN: readonly NgramOrder[];
+  readonly maxN: NgramOrder;
+  readonly poolSize: number;
+  readonly previewWords: number;
+  readonly ngramScales: NgramScales;
 }
 export interface PredictionCandidate {
   readonly word: string;
   readonly display: string;
+  // Virtual cross-order score after per-N scaling and both top-X cutoffs.
   readonly frequency: number;
 }
 export interface PredictionResult {
   readonly candidates: readonly PredictionCandidate[];
-  readonly order: NgramOrder | null;
+  readonly words: readonly PredictionCandidate[];
   readonly indexRevision: number;
 }
 export const predictionChannels = {
@@ -36,15 +50,27 @@ export interface PredictionBridge {
   getPredictionSettings(): Promise<SourceResult<PredictionSettings>>;
   setPredictionSettings(settings: PredictionSettings): Promise<SourceResult<PredictionSettings>>;
 }
-
+export function boundedInteger(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+}
+export function validateNgramScales(value: unknown): NgramScales {
+  if (!Array.isArray(value) || value.length !== 7 ||
+      Array.from(value).some((scale) => !boundedInteger(scale, 0, 250))) {
+    throw new Error('Choose seven N-gram multipliers between 0 and 250.');
+  }
+  return Object.freeze([...value]) as NgramScales;
+}
 export function validatePredictionSettings(input: unknown): PredictionSettings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Prediction settings are required.');
   const value = input as Record<string, unknown>;
-  if (Object.keys(value).length !== 2 || Object.keys(value).some((key) => !['sourceMode', 'enabledN'].includes(key)) ||
+  const keys = Object.keys(defaultPredictionSettings);
+  if (Object.keys(value).length !== keys.length || Object.keys(value).some((key) => !keys.includes(key)) ||
       !['imported', 'personal', 'combined'].includes(value.sourceMode as string) ||
-      !Array.isArray(value.enabledN) || value.enabledN.length < 1 || value.enabledN.length > 3 ||
-      value.enabledN.some((n) => n !== 1 && n !== 2 && n !== 3) || new Set(value.enabledN).size !== value.enabledN.length) {
-    throw new Error('Choose a prediction source and at least one of N=1, N=2 or N=3.');
+      !boundedInteger(value.maxN, 1, 7) || !boundedInteger(value.poolSize, 1, 100) ||
+      !boundedInteger(value.previewWords, 1, 10) || !boundedInteger(value.acceptWords, 1, value.previewWords)) {
+    throw new Error('Choose N=1–7, pool size 1–100, preview 1–10 and an acceptance count within the preview.');
   }
-  return { sourceMode: value.sourceMode as SourceMode, enabledN: [...value.enabledN].sort() as NgramOrder[] };
+  return { sourceMode: value.sourceMode as SourceMode, maxN: value.maxN as NgramOrder,
+    poolSize: value.poolSize, previewWords: value.previewWords, acceptWords: value.acceptWords,
+    ngramScales: validateNgramScales(value.ngramScales) };
 }

@@ -35,7 +35,7 @@ test('offers indexed cleanup only for unavailable files, rechecks restoration an
   try {
     await Promise.all([writeFile(lost, 'onlysource word sample'), writeFile(remaining, 'remaining text source'), writeFile(empty, '')]);
     await launch();
-    await expect(page!.locator('#import-limits')).toContainText('5 MiB each, 10 MiB per selection, 250,000 words');
+    await expect(page!.locator('#import-limits')).toContainText('5 MiB each, 10 MiB per selection, 500,000 words');
     await application!.evaluate(({ dialog }, selected) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: selected }); }, [lost, remaining, empty]);
     await page!.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
     await expect(page!.locator('#sources-status')).toHaveText('3 imported · 0 unchanged');

@@ -27,7 +27,7 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
       const name = document.createElement('strong');
       name.textContent = source.name;
       const details = document.createElement('span');
-      details.textContent = `${source.tokenCount.toLocaleString('en-US')} words · Revision ${source.revision}`;
+      details.textContent = `${source.tokenCount.toLocaleString('en-US')} words · Revision ${source.revision} · ${source.indexMaxN < 7 ? 'N=4–7 pending · Reindex local copy' : 'N=1–7 ready'}`;
       const availability = document.createElement('span');
       availability.textContent = {
         available: 'Original file available', missing: 'Original file missing',
@@ -83,6 +83,11 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
     if (busy) return;
     setBusy(true);
     status.textContent = 'Working with local sources…';
+    const progress = setInterval(() => {
+      void window.typeNudge.getIndexProgress().then((result) => {
+        if (busy && result.ok && result.value.active) status.textContent = `Indexing N=1–7 · ${result.value.words.toLocaleString('en-US')} words… You can close this panel and keep writing.`;
+      }).catch(() => {});
+    }, 250);
     try {
       const message = await operation();
       await refresh();
@@ -90,7 +95,7 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
     } catch (error) {
       try { await refresh(); } catch { /* Preserve the original operation error. */ }
       status.textContent = error instanceof Error ? error.message : 'Could not update sources. Please try again.';
-    } finally { setBusy(false); }
+    } finally { clearInterval(progress); setBusy(false); }
   }
   open.addEventListener('click', () => {
     dialog.showModal();

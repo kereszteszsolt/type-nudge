@@ -9,40 +9,46 @@
 
 **TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. Its plain-text CodeMirror editor suggests word completions and likely next words as subtle **ghost text**. Suggestions come from a lightweight, local **unigram/bigram/trigram** model indexed from imported text files and, with explicit consent, saved personal documents. No LLM or cloud API is used.
 
-> **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg and Windows x64.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001–007 implemented; Release 0.1 verified locally on Linux x64/WSL2 (WSLg/Xvfb) and Windows x64.** Available: the desktop editor, local text-source management, inline N=1–7 multi-word suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
-**Planned follow-up:** [TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) specifies keyboard Help, hidden prediction settings, contiguous N=1–7, per-N top-X pools from the virtual combined model, merged-score final top-X sampling, multi-word previews and 500,000-word indexing within the current byte limits. These additions are not implemented in the current build. See the [complete planned pool mechanism](docs/prediction-pool.md).
+[TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) adds keyboard Help, hidden prediction settings, contiguous N=1–7, two-stage top-X score mixing, multi-word previews and 500,000-word indexing within the existing byte limits. The [complete pool mechanism](docs/prediction-pool.md) explains exactly how selected files and N orders are combined and sampled.
 
-Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 5 MiB per file, 10 MiB per selection, 250,000 words per file, 128 characters per word, 100 stored sources and 32 MiB of stored text. File size and word count are independent: a 500 KiB file can contain more than the former 50,000-word allowance.
+Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 5 MiB per file, 10 MiB per selection, 500,000 words per file, 128 characters per word, 100 stored sources and 32 MiB of stored text. File size and word count are independent: a 500 KiB file can contain more than the former 50,000-word allowance.
 
-**Sources → Check files** refreshes the availability of original imports; opening Sources also checks them. If an original is missing/unreadable and its stored index exists, **Clear index** removes that source, retained text and all N=1/2/3 counts from the database. It rechecks availability before clearing, and leaves other imports/personal notes intact. Readable files and imports without counts keep the normal **Delete** action. Old imports show unknown availability until explicitly reimported once: earlier databases retained only a path hash. No background folder scan or automatic deletion runs.
+**Sources → Check files** refreshes the availability of original imports; opening Sources also checks them. If an original is missing/unreadable and its stored index exists, **Clear index** removes that source, retained text and all N=1–7 counts from the database. It rechecks availability before clearing, and leaves other imports/personal notes intact. Readable files and imports without counts keep the normal **Delete** action. Old imports show unknown availability until explicitly reimported once: earlier databases retained only a path hash. No background folder scan or automatic deletion runs.
 
 Imported text tolerates control characters: form feed (FF), vertical tab, NEL and Unicode line/paragraph separators become line breaks; other C0/C1 controls (including NUL and DEL) become spaces. Normal tabs/CR/LF stay intact. Unicode format marks, unusual spaces and symbols do not block indexing and are not indexed as words. The selected file is never rewritten; hashes/reindexing use the cleaned local copy.
 
-Choose **Imported Texts**, **My Writing** or **Combined** above the editor and any nonempty set of N=1/2/3. **Tab** accepts the missing suffix, **Alt+Down** cycles up to three candidates, and **Esc** dismisses. Without a suggestion, Tab moves focus normally. **My Writing** uses enabled learned documents while personal learning is on; **Combined** also includes active imports. Settings and source activation persist across restarts.
+Open **Settings** to choose **Imported Texts**, **My Writing** or **Combined**, maximum N (1–7), candidate pool X (1–100), preview length (1–10), partial-acceptance count and an individual **0–250× multiplier per N** (slider or manual number, default 1×). Settings also shows **database + WAL + SHM storage size**, with a refresh button. Every lower N is mandatory. Selected files form a virtual combined model: sum source counts before each per-N top-X cutoff, multiply admitted counts by their N setting and add equal-word scores, keep final top X and sample by score. Each later preview word uses the previous proposed words as virtual context. Multipliers affect this virtual pool only; stored frequencies stay unchanged and no reindex is needed. A 0× multiplier removes that N’s contribution; all usable weights at zero means no suggestion.
+
+**Tab** accepts one pending word, **Alt+Right** the configured number, **Alt+Enter** the whole preview, **Alt+Down** requests another continuation and **Esc** dismisses. Each acceptance is one undo step; a valid remaining preview stays visible. **?** explains commands and settings. Settings uses two columns on wide windows and stacks on narrow ones; **About → Ways to support** contains the maintainer support link. Without a suggestion, normal keyboard behavior remains available. Settings and source activation persist across restarts. My Writing contributes only while learning is on.
+
+Older indexes are preserved during schema-4 migration and show **N=4–7 pending**. Use **Sources → Reindex** to rebuild their retained local copies; the original file is not required. Already learned personal notes upgrade on an explicit Save with learning on. Unlearned notes are never bulk-indexed. New indexing always builds all seven orders independently of the slider.
 
 Use **New**, give the document a name, then **Save**. **Documents** reopens/deletes saved notes and provides **Learn from my writing**, off by default. Enabling learning affects future explicit saves; it never indexes existing notes automatically. Saving while on replaces that note's counts, while saving with learning off removes its previous learned contribution. Turning learning off pauses personal predictions while retaining other learned counts. **Use**, **Remove learning** and **Reset personal learned data** control personal contributions independently; reset also turns learning off and keeps saved documents and imports. Storage is limited to 1 MiB per text, 100 combined sources/documents and 32 MiB total UTF-8 text.
 
 ## Release 0.1 — Offline Predictive Writing MVP
 
 - **Plain-text writing:** write in a CodeMirror 6 editor with unobtrusive inline (ghost-text) suggestions.
-- **Keyboard controls:** **Tab** accepts; **Alt + Down** cycles suggested continuations; **Esc** dismisses. Normal editor shortcuts must keep working when no suggestion exists.
+- **Keyboard controls:** accept one/several/all pending words, request an alternative or dismiss; a small **?** Help button lists the actual shortcuts.
 - **Three prediction sources:** **Imported Texts**, **My Writing**, or **Combined**; enable/disable individual imported files. Save-time learning from personal writing is **opt-in and off by default**.
-- **Configurable N-grams:** enable any nonempty selection of **N=1, N=2 and N=3**. Prefer the longest available enabled context, then back off to shorter *enabled* contexts.
-- **Word completion and next-word prediction:** prefix matching plus up to **three** ranked suggestions. Predictions update while typing; the persistent index updates only on import/reimport or an authorized save.
+- **Configurable N-grams:** a maximum-N slider enables **N=1 through N=7** contiguously. All usable orders contribute to the mixed pool.
+- **Word completion and multi-word preview:** contextual top-X sampling and virtual lookahead for up to **ten** words. Pending suggestions are never saved or learned; the persistent index updates only on import/reindex or an authorized save.
 - **Local index:** per-source N-gram counts in a single SQLite file and a small in-memory LRU cache. Disabling a source never requires reindexing every other source.
 - **Privacy:** no accounts, global keystroke capture, telemetry, network-based prediction, Ollama, OpenRouter or model downloads.
 
 ### Writing with TypeNudge
 
 1. Import one or more UTF-8 `.txt` or `.md` files (or start typing without imports).
-2. Choose active source files, enable or disable learning from saved writing, and select N=1/2/3 predictors.
-3. Write normally. Read a dim suggested completion at the caret and accept it with **Tab**, skip to another with **Alt + Down**, or dismiss with **Esc**.
+2. Choose active source files, enable or disable learning from saved writing, and choose the maximum N, pool size and preview count in Settings.
+3. Write normally. Read a dim suggested completion at the caret and accept it with **Tab**, skip to another with **Alt + Down**, accept several with **Alt+Right** or all with **Alt+Enter**, or dismiss with **Esc**.
 4. Save a document locally; if personal learning is enabled, that document's previous index contribution is **replaced**, not counted twice. Revisit or disable sources whenever needed.
 
 There is no system-wide autocomplete. Prediction operates **only within TypeNudge's own editor**.
 
 ## Architecture
+
+The diagram shows the original TND-001–006 flow. TND-007 moves the N-gram services into one local worker thread and uses the [two-stage pool](docs/prediction-pool.md) in place of backoff/top-three selection; the IPC/privacy boundary is retained.
 
 ```mermaid
 flowchart TB
@@ -58,7 +64,7 @@ flowchart TB
     Editor --> Ghost[Inline ghost text + keyboard actions]
 ```
 
-The Electron renderer has **no Node.js or arbitrary filesystem access**. Only the main process owns SQLite and user-approved file operations. Local app and prediction data are stored under Electron's OS-specific `userData` directory, not in the repository.
+The Electron renderer has **no Node.js or arbitrary filesystem access**. The main process coordinates a single local worker that owns SQLite and user-approved file operations. Local app and prediction data are stored under Electron's OS-specific `userData` directory, not in the repository.
 
 [Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Branding](docs/branding.md).
 
@@ -158,21 +164,21 @@ npm.cmd run test:desktop
 Remove-Item Env:TYPENUDGE_EXECUTABLE
 ```
 
-`package` creates an **unsigned application directory**, with native SQLite unpacked from ASAR and Apache/bundled dependency notices included. No installer, signing or publication is configured. macOS, Linux outside WSLg and other architectures remain **Not run**. See [verification](docs/releases/release-0.1-mvp/verification.md) for commands, GUI-library preparation and the platform evidence. Do not package concurrently with `dev`, which rewrites the same `.vite/` build directory.
+`package` creates an **unsigned application directory**, with native SQLite unpacked from ASAR and Apache/bundled dependency notices included. No installer, signing or publication is configured. macOS, native Linux desktops outside WSL2 and other architectures remain **Not run**. See [verification](docs/releases/release-0.1-mvp/verification.md) for commands, GUI-library preparation and the platform evidence. Do not package concurrently with `dev`, which rewrites the same `.vite/` build directory.
 
 The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 24.04 to install the lockfile, typecheck and run unit/real SQLite tests. It skips the Electron binary download and does not run GUI, package or publish jobs. Actions are pinned to upstream commit IDs with read-only repository permissions. Its commands passed locally in a fresh temporary installation; **hosted GitHub Actions execution is Not run**. No separate lint configuration is present.
 
 `npm run benchmark:prediction` reports first indexing, retained-copy reindexing and LRU-cleared/warm prediction timings for two synthetic sources at 600 and 30,000 total tokens. Measurements include corpus sizes, CPU/runtime/SQLite versions and deterministic result checks. They exclude Electron IPC, rendering, file-picker/decoding and database-open time; they are local observations with a bounded vocabulary, not worst-case or end-to-end typing guarantees. Results are recorded in [verification](docs/releases/release-0.1-mvp/verification.md#tnd-006--2026-10-18).
 
-`npm run benchmark:import` uses a fresh process/database for each 500 KiB–5 MiB synthetic fixture, including a varied 500 KiB corpus and 125,000/250,000 unique-word stress cases. It checks complete stored text/counts, unchanged reimports, retained-copy reindexing and known trigram output, and reports whole-process peak RSS plus five LRU-cleared unigram/trigram probes. Vocabulary diversity changes cost substantially; the raw-byte limit fixture is mostly padding. Indexing still runs synchronously in main, so large imports/reindexes can delay main-process requests. Personal saved texts retain their separate 1 MiB limit. See [large-import verification](docs/releases/release-0.1-mvp/verification.md#tnd-006-follow-up--larger-text-imports-2026-10-18) for measured results and limitations.
+`npm run benchmark:import` uses a fresh process/database for each 500,000-word repeated, varied and unique-word corpus, plus an exact 5 MiB boundary fixture. It checks stored bytes/hashes/all seven N counts, unchanged reimports and retained-copy reindexing, and reports peak process RSS, SQLite/WAL bytes and five LRU-cleared N=1–7 probes for preview lengths 1/3/10. Worker indexing keeps main/editor handling available; source mutations remain serialized. Vocabulary diversity changes storage/query cost substantially: the byte-padding fixture is not a vocabulary stress case. Personal saved texts retain their separate 1 MiB limit. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual measurements and limitations.
 
 ## Development roadmap
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All six stories; Linux x64/WSLg and Windows x64 package checks, Linux development checks, CI configuration and measured performance |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–006 evidence | Real commands, hardware, timings and platform/CI limits |
-| [TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) | Planned | Help, hidden settings, N=1–7, per-N/final top-X score mixing, multi-word preview and 500k words |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All seven stories; Linux x64/WSL2 (WSLg/Xvfb) and Windows x64 package checks, Linux development checks, CI configuration and measured performance |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–007 evidence | Real commands, hardware, timings and platform/CI limits |
+| [TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) | Implemented | Help, hidden settings, N=1–7, per-N/final top-X score mixing, multi-word preview and 500k words |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For suggested GitHub metadata, see [About & Topics](docs/github-metadata.md).

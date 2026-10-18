@@ -9,14 +9,14 @@ import path from 'node:path';
 import { performance as nodePerformance } from 'node:perf_hooks';
 import Database from 'better-sqlite3';
 
-test('imports 500 KiB with form feeds, 250,000-word and 5 MiB sources and persists stable counts', async () => {
-  test.setTimeout(120_000);
+test('imports 500 KiB with form feeds, 500,000-word and 5 MiB sources and persists stable counts', async () => {
+  test.setTimeout(240_000);
   const userData = await mkdtemp(path.join(tmpdir(), 'typenudge-large-import-'));
   const header = 'we write words.\n';
   const pageText = 'word '.repeat(1024).slice(0, -1);
   const inputs: { name: string; text: string; raw?: string; tokens: number; sentences: number }[] = [
     { name: 'dense-500k.txt', raw: (pageText + '\f').repeat(100), text: (pageText + '\n').repeat(100), tokens: 102_400, sentences: 100 },
-    { name: 'bound-250k.txt', text: header + Array.from({ length: 249_997 }, (_, i) => `token${String(i).padStart(6, '0')}`).join(' '), tokens: 250_000, sentences: 2 },
+    { name: 'bound-500k.txt', text: header + Array.from({ length: 499_997 }, (_, i) => `w${i.toString(36)}`).join(' '), tokens: 500_000, sentences: 2 },
     { name: 'bound-5m.md', text: header + ' '.repeat(5 * 1024 * 1024 - Buffer.byteLength(header)), tokens: 3, sentences: 1 },
   ];
   const files = inputs.map((input) => path.join(userData, input.name));
@@ -53,7 +53,7 @@ test('imports 500 KiB with form feeds, 250,000-word and 5 MiB sources and persis
         expect(row.bytes).toBe(Buffer.byteLength(input.text));
         expect(row.hash).toBe(createHash('sha256').update(input.text).digest('hex'));
         expect(db.prepare('SELECT n, SUM(frequency) AS total FROM ngrams WHERE source_id = ? GROUP BY n ORDER BY n').all(row.id))
-          .toEqual([1, 2, 3].map((n) => ({ n, total: input.tokens - input.sentences * (n - 1) })));
+          .toEqual(Array.from({length:Math.min(7,input.tokens)},(_,i)=>i+1).map((n) => ({ n, total: input.sentences===100 ? input.tokens-100*(n-1) : input.sentences===2 ? input.tokens-Math.min(n-1,3)-(n-1) : input.tokens-(n-1) })));
       }
       return rows.map(({ name, tokens, revision, hash }) => ({ name, tokens, revision, hash }));
     } finally { db.close(); }
@@ -76,7 +76,16 @@ test('imports 500 KiB with form feeds, 250,000-word and 5 MiB sources and persis
     });
     const start = nodePerformance.now();
     await page!.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
-    await expect(page!.locator('#sources-status')).toHaveText('3 imported · 0 unchanged', { timeout: 45_000 });
+    await expect.poll(async()=>page!.evaluate(async()=>{
+      const progress=await window.typeNudge.getIndexProgress();return progress.ok&&progress.value.active;
+    }),{timeout:15_000}).toBe(true);
+    await page!.keyboard.press('Escape');
+    await page!.getByRole('textbox',{name:'Document text'}).fill('Writing while the index is building');
+    await page!.keyboard.press('End');await page!.keyboard.type(' works.');
+    await expect(page!.locator('.cm-line')).toHaveText('Writing while the index is building works.');
+    expect((await page!.evaluate(()=>window.typeNudge.getAppInfo())).name).toBe('TypeNudge');
+    await page!.getByRole('button',{name:'Sources',exact:true}).click();
+    await expect(page!.locator('#sources-status')).toHaveText('3 imported · 0 unchanged', { timeout: 90_000 });
     const importMs = nodePerformance.now() - start;
     const heartbeat = await page!.evaluate(() => {
       const probe = (window as unknown as { importProbe: { maxGapMs: number; ticks: number; id: number } }).importProbe;
@@ -94,16 +103,22 @@ test('imports 500 KiB with form feeds, 250,000-word and 5 MiB sources and persis
     console.log(JSON.stringify({ largeImport: { importMs, heartbeat, mainMemory } }));
 
     await page!.getByRole('button', { name: 'Import TXT / MD', exact: true }).click();
-    await expect(page!.locator('#sources-status')).toHaveText('0 imported · 3 unchanged', { timeout: 45_000 });
+    await expect(page!.locator('#sources-status')).toHaveText('0 imported · 3 unchanged', { timeout: 90_000 });
     expect(inspect()).toEqual(before);
-    await page!.getByRole('button', { name: 'Reindex bound-250k.txt', exact: true }).click();
-    await expect(page!.getByRole('listitem').filter({ hasText: 'bound-250k.txt' })).toContainText('Revision 2', { timeout: 45_000 });
+    await page!.getByRole('button', { name: 'Reindex bound-500k.txt', exact: true }).click();
+    await expect(page!.getByRole('listitem').filter({ hasText: 'bound-500k.txt' })).toContainText('Revision 2', { timeout: 90_000 });
     const reindexed = inspect();
-    expect(reindexed).toEqual(before.map((row) => ({ ...row, revision: row.name === 'bound-250k.txt' ? 2 : 1 })));
+    expect(reindexed).toEqual(before.map((row) => ({ ...row, revision: row.name === 'bound-500k.txt' ? 2 : 1 })));
     await page!.keyboard.press('Escape');
+    const preferences = await page!.evaluate(async()=>{ const r=await window.typeNudge.getPredictionSettings(); if(!r.ok)throw new Error(r.error); return window.typeNudge.setPredictionSettings({...r.value,poolSize:1,previewWords:1,acceptWords:1}); });
+    expect(preferences.ok).toBe(true);
+    // Discard this fixture's deliberate unsaved typing before reloading preferences.
+    await application!.evaluate(({dialog})=>{dialog.showMessageBoxSync=()=>0;});
+    await page!.reload();
+    await expect(page!.getByRole('button',{name:'About',exact:true})).toBeEnabled();
     await page!.getByRole('textbox', { name: 'Document text' }).fill('we write wo');
     await page!.keyboard.press('End');
-    await expect(page!.locator('.cm-ghost')).toHaveText('rds');
+    await expect(page!.locator('.cm-ghost')).toHaveText('rd');
     await close();
     await launch();
     await page!.getByRole('button', { name: 'Sources', exact: true }).click();

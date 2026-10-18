@@ -3,31 +3,38 @@
 
 import Database from 'better-sqlite3';
 import { createHash, randomUUID } from 'node:crypto';
-import { importLimits, type SourceSummary } from '../../shared/sources';
+import { stat } from 'node:fs/promises';
+import { importLimits, type SourceSummary, type StorageUsage } from '../../shared/sources';
 import { SourceError } from './errors';
-import { countNgrams } from './tokenize';
+import { writeNgrams } from './tokenize';
+import { importSelectedFiles } from './import';
+import { listSourceFiles, clearUnavailableSource } from './source-files';
+import { PredictionEngine } from '../prediction/engine';
+import type { PredictionInput } from '../../shared/prediction';
 import { SqlitePredictionRepository } from '../prediction/sqlite-repository';
 import type { PredictionRepository } from '../prediction/types';
-import { validatePredictionSettings, type PredictionSettings, type SourceMode } from '../../shared/prediction';
+import { defaultNgramScales, validatePredictionSettings, type PredictionSettings, type SourceMode } from '../../shared/prediction';
 import { PersonalStore } from './personal';
 
 interface SourceRow {
   id: string; name: string; enabled: number; revision: number;
-  contentHash: string; tokenCount: number; updatedAt: string;
+  contentHash: string; tokenCount: number; updatedAt: string; indexMaxN: number;
 }
 
 const summaryColumns = `id, display_name AS name, enabled, revision,
-  content_hash AS contentHash, token_count AS tokenCount, updated_at AS updatedAt`;
+  content_hash AS contentHash, token_count AS tokenCount, updated_at AS updatedAt, index_max_n AS indexMaxN`;
 
 export class SourceStore {
   private readonly db: Database.Database;
   readonly personal: PersonalStore;
 
-  constructor(filename: string) {
+  private engine?: PredictionEngine;
+
+  constructor(private readonly filename: string, private readonly onIndexProgress?: (words: number) => void) {
     this.db = new Database(filename);
     try {
       const version = this.db.pragma('user_version', { simple: true }) as number;
-      if (version > 3) throw new SourceError('This database needs a newer version of TypeNudge.');
+      if (version > 5) throw new SourceError('This database needs a newer version of TypeNudge.');
       this.db.pragma('foreign_keys = ON');
       this.db.pragma('journal_mode = WAL');
       this.db.pragma('busy_timeout = 5000');
@@ -83,7 +90,34 @@ export class SourceStore {
           original_path TEXT NOT NULL
         ); PRAGMA user_version = 3;`);
       })();
-      this.personal = new PersonalStore(this.db);
+      if (version < 4) this.db.transaction(() => {
+        this.db.exec(`ALTER TABLE sources ADD COLUMN index_max_n INTEGER NOT NULL DEFAULT 3 CHECK(index_max_n BETWEEN 1 AND 7);
+          DROP INDEX ngrams_prefix;
+          ALTER TABLE ngrams RENAME TO ngrams_v3;
+          CREATE TABLE ngrams (
+            source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+            n INTEGER NOT NULL CHECK(n BETWEEN 1 AND 7), context_key TEXT NOT NULL,
+            next_token TEXT NOT NULL COLLATE BINARY, display_token TEXT NOT NULL,
+            frequency INTEGER NOT NULL CHECK(frequency > 0),
+            PRIMARY KEY(source_id, n, context_key, next_token)
+          ) WITHOUT ROWID;
+          INSERT INTO ngrams SELECT * FROM ngrams_v3;
+          DROP TABLE ngrams_v3;
+          CREATE INDEX ngrams_prefix ON ngrams(n, next_token COLLATE BINARY, source_id);`);
+        const old = this.db.prepare("SELECT value FROM settings WHERE key = 'enabledN'").get() as { value: string };
+        const selected: unknown = JSON.parse(old.value);
+        const maxN = Array.isArray(selected) && selected.length && selected.every((n) => Number.isInteger(n) && n >= 1 && n <= 3)
+          ? Math.max(...selected) : 3;
+        const insert = this.db.prepare('INSERT INTO settings VALUES (?, ?)');
+        for (const [key, value] of Object.entries({ maxN, poolSize: 10, previewWords: 3, acceptWords: 2 })) insert.run(key, JSON.stringify(value));
+        this.db.prepare("DELETE FROM settings WHERE key = 'enabledN'").run();
+        this.db.pragma('user_version = 4');
+      })();
+      if (version < 5) this.db.transaction(() => {
+        this.db.prepare("INSERT INTO settings VALUES ('ngramScales', ?)").run(JSON.stringify(defaultNgramScales));
+        this.db.pragma('user_version = 5');
+      })();
+      this.personal = new PersonalStore(this.db, onIndexProgress);
     } catch (error) {
       this.db.close();
       throw error;
@@ -94,6 +128,19 @@ export class SourceStore {
     const rows = this.db.prepare(`SELECT ${summaryColumns} FROM sources WHERE kind = 'imported' ORDER BY created_at, id LIMIT ?`)
       .all(importLimits.sources) as SourceRow[];
     return rows.map((row) => ({ ...row, enabled: Boolean(row.enabled) }));
+  }
+
+  async storageUsage(): Promise<StorageUsage> {
+    const bytes = async (suffix: string): Promise<number> => {
+      try { return (await stat(this.filename + suffix)).size; }
+      catch (error) {
+        if (suffix && (error as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+        throw new SourceError('Could not measure local database size. Please try again.');
+      }
+    };
+    const [databaseBytes, walBytes, shmBytes] = await Promise.all([bytes(''), bytes('-wal'), bytes('-shm')]);
+    return { databaseBytes: databaseBytes, walBytes: walBytes, shmBytes: shmBytes,
+      totalBytes: databaseBytes + walBytes + shmBytes };
   }
 
   originalFile(id: string): { path: string | null; hasIndex: boolean } {
@@ -108,7 +155,7 @@ export class SourceStore {
   }
 
   getPredictionSettings(): PredictionSettings {
-    const rows = this.db.prepare("SELECT key, value FROM settings WHERE key IN ('sourceMode', 'enabledN')").all() as { key: string; value: string }[];
+    const rows = this.db.prepare("SELECT key, value FROM settings WHERE key IN ('sourceMode', 'maxN', 'poolSize', 'previewWords', 'acceptWords', 'ngramScales')").all() as { key: string; value: string }[];
     return validatePredictionSettings(Object.fromEntries(rows.map((row) => [row.key, JSON.parse(row.value)])));
   }
 
@@ -116,8 +163,7 @@ export class SourceStore {
     const settings = validatePredictionSettings(input);
     this.db.transaction(() => {
       const update = this.db.prepare('UPDATE settings SET value = ? WHERE key = ?');
-      update.run(JSON.stringify(settings.sourceMode), 'sourceMode');
-      update.run(JSON.stringify(settings.enabledN), 'enabledN');
+      for (const [key, value] of Object.entries(settings)) update.run(JSON.stringify(value), key);
     })();
     return settings;
   }
@@ -149,15 +195,14 @@ export class SourceStore {
     const bytes = Buffer.byteLength(text, 'utf8');
     if (bytes > importLimits.fileBytes) throw new SourceError(`Each file must be ${importLimits.fileBytes / 1024 ** 2} MiB or smaller.`);
     const hash = createHash('sha256').update(text, 'utf8').digest('hex');
-    const indexed = countNgrams(text);
     return this.db.transaction(() => {
-      const old = this.db.prepare("SELECT id, content_hash FROM sources WHERE origin_key = ? AND kind = 'imported'")
-        .get(originKey) as { id: string; content_hash: string } | undefined;
+      const old = this.db.prepare("SELECT id, content_hash, index_max_n FROM sources WHERE origin_key = ? AND kind = 'imported'")
+        .get(originKey) as { id: string; content_hash: string; index_max_n: number } | undefined;
       const rememberFile = (id: string): void => {
         if (originalPath !== undefined) this.db.prepare(`INSERT INTO imported_files VALUES (?, ?)
           ON CONFLICT(source_id) DO UPDATE SET original_path = excluded.original_path`).run(id, originalPath);
       };
-      if (old?.content_hash === hash) {
+      if (old?.content_hash === hash && old.index_max_n === 7) {
         rememberFile(old.id);
         return 'unchanged' as const;
       }
@@ -172,15 +217,17 @@ export class SourceStore {
       const now = new Date().toISOString();
       if (old) {
         this.db.prepare('UPDATE sources SET display_name = ?, content_hash = ?, token_count = ?, revision = revision + 1, updated_at = ? WHERE id = ?')
-          .run(name, hash, indexed.tokenCount, now, id);
+          .run(name, hash, 0, now, id);
         this.db.prepare('UPDATE documents SET body_text = ?, byte_length = ? WHERE source_id = ?').run(text, bytes, id);
       } else {
         this.db.prepare(`INSERT INTO sources(id, kind, origin_key, display_name, revision, content_hash, token_count, created_at, updated_at)
-          VALUES (?, 'imported', ?, ?, 1, ?, ?, ?, ?)`).run(id, originKey, name, hash, indexed.tokenCount, now, now);
+          VALUES (?, 'imported', ?, ?, 1, ?, ?, ?, ?)`).run(id, originKey, name, hash, 0, now, now);
         this.db.prepare('INSERT INTO documents VALUES (?, ?, ?, ?)').run(randomUUID(), id, text, bytes);
       }
       rememberFile(id);
-      this.writeCounts(id, indexed.counts);
+      const tokenCount = writeNgrams(this.db, id, text, this.onIndexProgress);
+      this.db.prepare('UPDATE sources SET token_count = ? WHERE id = ?').run(tokenCount, id);
+      this.advanceRevision();
       return 'imported' as const;
     })();
   }
@@ -189,10 +236,10 @@ export class SourceStore {
     return this.db.transaction(() => {
       this.summary(id);
       const document = this.db.prepare('SELECT body_text AS text FROM documents WHERE source_id = ?').get(id) as { text: string };
-      const indexed = countNgrams(document.text);
-      this.writeCounts(id, indexed.counts);
+      const tokenCount = writeNgrams(this.db, id, document.text, this.onIndexProgress);
+      this.advanceRevision();
       this.db.prepare('UPDATE sources SET revision = revision + 1, token_count = ?, updated_at = ? WHERE id = ?')
-        .run(indexed.tokenCount, new Date().toISOString(), id);
+        .run(tokenCount, new Date().toISOString(), id);
       return this.summary(id);
     })();
   }
@@ -205,16 +252,19 @@ export class SourceStore {
     })();
   }
 
-  private writeCounts(id: string, counts: ReturnType<typeof countNgrams>['counts']): void {
-    this.db.prepare('DELETE FROM ngrams WHERE source_id = ?').run(id);
-    const insert = this.db.prepare('INSERT INTO ngrams VALUES (?, ?, ?, ?, ?, ?)');
-    for (const row of counts) insert.run(id, row.n, row.context, row.candidate, row.display, row.frequency);
-    this.advanceRevision();
-  }
-
   private advanceRevision(): void {
     this.db.prepare("UPDATE settings SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT) WHERE key = 'indexRevision'").run();
   }
 
+  checkFiles() { return listSourceFiles(this); }
+  importFiles(paths: string[]) { return importSelectedFiles(paths, this); }
+  clearUnavailable(id: string) { return clearUnavailableSource(this, id); }
+  predict(input: PredictionInput) {
+    const settings = this.getPredictionSettings();
+    this.engine ??= new PredictionEngine(this.predictionRepository());
+    return this.engine.predict({ ...input, maxN: settings.maxN, poolSize: settings.poolSize, previewWords: settings.previewWords,
+      ngramScales: settings.ngramScales,
+      sourceIds: this.predictionSourceIds(settings.sourceMode) });
+  }
   close(): void { this.db.close(); }
 }

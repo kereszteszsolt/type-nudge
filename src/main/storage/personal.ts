@@ -6,14 +6,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { validateSaveDocument, type DocumentSummary, type PersonalState, type SaveDocument, type SavedDocument } from '../../shared/documents';
 import { importLimits } from '../../shared/sources';
 import { SourceError } from './errors';
-import { countNgrams } from './tokenize';
+import { writeNgrams } from './tokenize';
 
 interface Row extends DocumentSummary { sourceId: string; text: string; hash: string; learnedHash: string | null }
 const columns = `p.id, s.id AS sourceId, s.display_name AS name, s.revision, s.updated_at AS updatedAt,
-  s.enabled, s.token_count AS tokenCount, s.content_hash AS hash, p.learned_hash AS learnedHash`;
+  s.index_max_n AS indexMaxN, s.enabled, s.token_count AS tokenCount, s.content_hash AS hash, p.learned_hash AS learnedHash`;
 
 export class PersonalStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database.Database, private readonly progress?: (words: number) => void) {}
   learning(): boolean {
     return (this.db.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get() as { value: string }).value === 'true';
   }
@@ -24,7 +24,7 @@ export class PersonalStore {
   }
   private summary(row: Row): DocumentSummary {
     return { id: row.id, name: row.name, revision: row.revision, updatedAt: row.updatedAt,
-      enabled: Boolean(row.enabled), learned: row.learnedHash !== null, tokenCount: row.tokenCount };
+      indexMaxN: row.indexMaxN, enabled: Boolean(row.enabled), learned: row.learnedHash !== null, tokenCount: row.tokenCount };
   }
   private row(id: string): Row {
     const row = this.db.prepare(`SELECT ${columns}, p.body_text AS text FROM personal_documents p JOIN sources s ON s.id = p.source_id
@@ -47,11 +47,11 @@ export class PersonalStore {
       if (total.bytes - Buffer.byteLength(old?.text ?? '', 'utf8') + bytes > importLimits.storedBytes) throw new SourceError('Local stored text is limited to 32 MiB. Delete an item and try again.');
       const hash = createHash('sha256').update(value.text, 'utf8').digest('hex');
       const learn = this.learning();
-      const indexed = learn && old?.learnedHash !== hash ? countNgrams(value.text) : undefined;
-      if (old && old.hash === hash && old.name === value.name && (learn ? old.learnedHash === hash : old.learnedHash === null)) return this.summary(old);
+      const needsIndex = learn && (old?.learnedHash !== hash || old.indexMaxN < 7);
+      if (old && old.hash === hash && old.name === value.name && (learn ? old.learnedHash === hash && !needsIndex : old.learnedHash === null)) return this.summary(old);
       const id = old?.id ?? randomUUID(), sourceId = old?.sourceId ?? randomUUID();
       const now = new Date().toISOString();
-      const tokenCount = learn ? indexed?.tokenCount ?? old?.tokenCount ?? 0 : 0;
+      const tokenCount = learn ? old?.tokenCount ?? 0 : 0;
       if (old) {
         this.db.prepare('UPDATE sources SET display_name = ?, content_hash = ?, token_count = ?, revision = revision + 1, updated_at = ? WHERE id = ?')
           .run(value.name, hash, tokenCount, now, sourceId);
@@ -62,13 +62,10 @@ export class PersonalStore {
           VALUES (?, 'personal', ?, 1, ?, ?, ?, ?)`).run(sourceId, value.name, hash, tokenCount, now, now);
         this.db.prepare('INSERT INTO personal_documents VALUES (?, ?, ?, ?, ?)').run(id, sourceId, value.text, bytes, learn ? hash : null);
       }
-      if (indexed || !learn) {
-        this.db.prepare('DELETE FROM ngrams WHERE source_id = ?').run(sourceId);
-        if (indexed) {
-          const insert = this.db.prepare('INSERT INTO ngrams VALUES (?, ?, ?, ?, ?, ?)');
-          for (const gram of indexed.counts) insert.run(sourceId, gram.n, gram.context, gram.candidate, gram.display, gram.frequency);
-        }
-      }
+      if (needsIndex) {
+        const tokens = writeNgrams(this.db, sourceId, value.text, this.progress);
+        this.db.prepare('UPDATE sources SET token_count = ? WHERE id = ?').run(tokens, sourceId);
+      } else if (!learn) this.db.prepare('DELETE FROM ngrams WHERE source_id = ?').run(sourceId);
       this.advance();
       return this.summary(this.row(id));
     })();

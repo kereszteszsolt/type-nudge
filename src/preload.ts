@@ -10,6 +10,8 @@ import { documentChannels, type SaveDocument } from './shared/documents';
 const bridge: DesktopBridge = Object.freeze({
   getAppInfo: () => ipcRenderer.invoke(channels.appInfo),
   openLink: (id: LinkId) => ipcRenderer.invoke(channels.openLink, id),
+  getIndexProgress: () => ipcRenderer.invoke(sourceChannels.progress),
+  getStorageUsage: () => ipcRenderer.invoke(sourceChannels.storage),
   listSources: () => ipcRenderer.invoke(sourceChannels.list),
   checkSourceFiles: () => ipcRenderer.invoke(sourceChannels.checkFiles),
   importSources: () => ipcRenderer.invoke(sourceChannels.import),

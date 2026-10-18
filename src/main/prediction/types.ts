@@ -8,7 +8,7 @@ export interface PredictionSnapshot {
   readonly indexRevision: number;
   readonly sourceFingerprint: string;
   readonly activeSourceIds: readonly string[];
-  select(order: NgramOrder, contextKey: string, prefix: string): readonly PredictionCandidate[];
+  select(order: NgramOrder, contextKey: string, prefix: string, limit: number): readonly PredictionCandidate[];
 }
 
 export interface PredictionRepository {
