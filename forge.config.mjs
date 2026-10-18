@@ -2,6 +2,8 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 
 export default {
+  // better-sqlite3 13 ships Node-API prebuilds; Forge's legacy detection rebuilds it unnecessarily.
+  rebuildConfig: { ignoreModules: ['better-sqlite3'] },
   packagerConfig: {
     asar: true,
     executableName: 'type-nudge',

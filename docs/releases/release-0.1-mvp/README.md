@@ -1,6 +1,6 @@
 # Release 0.1 — Offline Predictive Writing MVP
 
-**Status:** Implemented and locally verified on **Linux x64/WSLg** · **6 stories implemented.** See [verification](verification.md) for commands, measurements and platform limits. Hosted GitHub Actions is Not run; installers, signing and publication are not provided.
+**Status:** Implemented and locally verified on **Linux x64/WSLg and Windows x64** · **6 stories implemented.** See [verification](verification.md) for commands, measurements and platform limits. Hosted GitHub Actions is Not run; installers, signing and publication are not provided.
 
 ## Goal
 

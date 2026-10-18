@@ -1,6 +1,6 @@
 # Testing and evidence plan
 
-TND-001–006 have runnable checks and recorded available-environment evidence. Hosted CI and other native OS targets remain unverified. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001–006 have runnable checks and recorded Linux x64/WSLg and native Windows x64 package evidence. Hosted CI and other native OS targets remain unverified. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
 
 ## Foundation checks
 
@@ -82,7 +82,9 @@ The packaged suite adds real Save/Ctrl+S/Open/New/Delete/Remove learning/Reset f
 
 For graphical verification, build/package before `npm run test:desktop`; use `TYPENUDGE_EXECUTABLE` for the real output executable. The TND-006 development run also checks all scenarios with a running `npm run dev` server. Do not package while dev is running, and rebuild after stopping dev before testing the production `.vite/build/main.js` entry. The packaged `out/` executable is an independent production copy.
 
-The package audit verifies native `.node` files are physically present under `app.asar.unpacked`, including `better-sqlite3/prebuilds/linux-x64.node`, the resource Apache license matches `LICENSE`, and generated bundled dependency notices include CodeMirror/MIT. The real packaged import/save/restart scenarios prove Electron opens and updates `typenudge.sqlite3` under its isolated `userData`; a Node-only DB open is insufficient evidence. Other shipped prebuild filenames do not establish other-platform runtime support.
+The package audit verifies native `.node` files are physically present under `app.asar.unpacked`, including `better-sqlite3/prebuilds/linux-x64.node` and `win32-x64.node` on the corresponding tested targets, the resource Apache license matches `LICENSE`, and generated bundled dependency notices include CodeMirror/MIT. The real packaged import/save/restart scenarios prove Electron opens and updates `typenudge.sqlite3` under its isolated `userData`; a Node-only DB open is insufficient evidence. Other shipped prebuild filenames do not establish other-platform runtime support.
+
+For native Windows commands, see README. npm 11.16.0 or newer honors the explicit `allowScripts` denial for `better-sqlite3`; Forge's `ignoreModules` entry also prevents its unnecessary rebuild while retaining/unpacking its shipped Node-API binary. The desktop harness removes inherited `ELECTRON_RUN_AS_NODE` entirely and uses Windows `Ctrl+Y` for redo. Unit/integration fixtures use host-valid file URLs, Windows junctions for final/ancestor link rejection, and invalid filename input without attempting to create an OS-invalid file. Linux retains final-file symlink coverage; Windows file-symlink privileges are not required or claimed.
 
 ## Performance checks
 

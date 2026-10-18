@@ -258,11 +258,13 @@ describe('bounded explicit file import', () => {
     expect(report.errors[0]?.message).not.toContain(directory);
   });
 
-  it('rejects directories and final or ancestor symbolic links', async () => {
+  it('rejects directories and final or ancestor links', async () => {
     await mkdir(path.join(directory, 'folder.txt'));
     const target = await file('target.txt', 'private fixture');
-    await symlink(target, path.join(directory, 'linked.txt'));
-    await symlink(directory, path.join(directory, 'linked-folder'), 'dir');
+    // Windows junctions exercise both link positions without requiring symlink privileges.
+    await symlink(process.platform === 'win32' ? directory : target, path.join(directory, 'linked.txt'),
+      process.platform === 'win32' ? 'junction' : 'file');
+    await symlink(directory, path.join(directory, 'linked-folder'), process.platform === 'win32' ? 'junction' : 'dir');
     const report = await importSelectedFiles([path.join(directory, 'folder.txt'), path.join(directory, 'linked.txt'), path.join(directory, 'linked-folder/target.txt')], store);
     expect(report.errors).toHaveLength(3);
     expect(report.errors.map((error) => error.message)).toEqual([expect.stringContaining('regular text'), expect.stringContaining('Symbolic'), expect.stringContaining('Symbolic')]);
@@ -270,8 +272,9 @@ describe('bounded explicit file import', () => {
   });
 
   it('rejects traversal, relative paths and control characters in selected names', async () => {
-    const report = await importSelectedFiles(['relative.txt', directory + '/sub/../traversal.txt', await file('bad\nname.txt', 'text')], store);
+    const report = await importSelectedFiles(['relative.txt', directory + '/sub/../traversal.txt', path.join(directory, 'bad\nname.txt')], store);
     expect(report.errors).toHaveLength(3);
+    expect(report.errors.every((error) => error.message === 'The selected filename is not supported.')).toBe(true);
     expect(store.list()).toEqual([]);
   });
 

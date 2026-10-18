@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { allowRequest, localDevEntry, safeExternalUrl } from '../../src/main/security';
 
 describe('offline request policy', () => {
-  const packaged = 'file:///opt/type-nudge/renderer/main_window/index.html';
+  const packaged = pathToFileURL(path.resolve('security-fixture/renderer/main_window/index.html')).href;
 
   it('allows bundled assets and rejects remote or unrelated local files', () => {
     expect(allowRequest(packaged, packaged)).toBe(true);
-    expect(allowRequest('file:///opt/type-nudge/renderer/main_window/assets/editor.js', packaged)).toBe(true);
+    expect(allowRequest(new URL('assets/editor.js', packaged).href, packaged)).toBe(true);
     for (const url of [
       'https://example.com', 'http://127.0.0.1:5173/', 'ws://127.0.0.1:5173/',
-      'file:///etc/passwd', 'file:///opt/type-nudge/renderer/main_window-other/secret',
-      'file:///opt/type-nudge/renderer/main_window/%2e%2e/private',
+      'file:///etc/passwd', new URL('../main_window-other/secret', packaged).href,
+      new URL('%2e%2e/private', packaged).href,
       'file://remote/share/file', 'data:text/html,hello', 'not a URL',
     ]) expect(allowRequest(url, packaged), url).toBe(false);
   });

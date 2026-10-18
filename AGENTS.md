@@ -2,7 +2,7 @@
 
 ## Status and approved boundaries
 
-The original documentation-only baseline now includes **TND-001–006**. Release 0.1 is **implemented and locally verified on Linux x64/WSLg**: editor, SQLite/import, inline predictions/settings, personal documents/learning, CI configuration and reproducible performance evidence. Hosted CI, other native OS targets and release installers/signing/publication remain unverified or unprovided. Consult the active story and verification before presenting any behavior as implemented or verified.
+The original documentation-only baseline now includes **TND-001–006**. Release 0.1 is **implemented and locally verified on Linux x64/WSLg and Windows x64**: editor, SQLite/import, inline predictions/settings, personal documents/learning, CI configuration and reproducible performance evidence. Hosted CI, other native OS targets and release installers/signing/publication remain unverified or unprovided. Consult the active story and verification before presenting any behavior as implemented or verified.
 
 The agreed MVP is a **single Electron/TypeScript desktop app** with CodeMirror 6, local SQLite indexing, N=1/2/3 word predictions, prefix completion, inline ghost text, selectable text sources, save-time opt-in learning, and Electron Forge packaging. No external API, server backend, cloud model, account, global keyboard monitoring or shared writing history.
 

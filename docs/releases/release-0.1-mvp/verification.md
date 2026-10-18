@@ -412,3 +412,66 @@ Unigram uses empty prefix/context and returns `we`, `write`, `word0`. Other case
 All six stories' implementation/available-environment criteria now have evidence. This completes the MVP's local Linux x64/WSLg implementation/verification scope. It is not a published release or a universal support claim. Hosted GitHub Actions, native Windows/macOS, native Linux outside WSLg, other architectures, installers/signing, physical IME, assistive-technology hardware and actual support-browser launch remain **Not run**. No release tag or uploaded binary exists from this work.
 
 These measurements are one local run with limited vocabulary and uncontrolled system load; they are not quality, worst-case, end-to-end typing or cross-platform performance guarantees. GUI tests use the existing controlled dialog/delayed-handler fixtures described in TND-004/005. No user corpus was used, and no runtime files/screenshots/builds are committed.
+
+## TND-006 follow-up — Windows native packaging, 2026-10-18
+
+The user reported Forge failing to rebuild `better-sqlite3` on native Windows after commit `a6d3f98`. This follow-up fixes that packaging path within TND-006. No application behavior, dependency versions or lockfile changed. Separate approval to commit this follow-up was received on 2026-10-18; the evidence below was recorded before that commit.
+
+### Cause and targeted fix
+
+The pinned `better-sqlite3` 13.0.3 ships Node-API 10 binaries, including `prebuilds/win32-x64.node`. A native Windows Node 24.18.0 probe opened an in-memory SQLite 3.53.4 database and round-tripped Hungarian/Japanese text through that binary. The installed Forge/rebuild code nevertheless detected `binding.gyp` and attempted a source rebuild instead of recognizing this prebuild layout. A fresh Windows `npm ci` also attempted an implicit `node-gyp rebuild`; its log showed that Python 3.13.14 was found but no usable Visual C++ installation was available.
+
+`forge.config.mjs` now uses `rebuildConfig.ignoreModules: ['better-sqlite3']`. `package.json` explicitly denies only that dependency's install script with `allowScripts: { "better-sqlite3": false }`, supported by the tested npm 11.16.0. Native files remain packaged/unpacked normally; other modules retain their usual rebuild behavior. Both settings must be revisited if the SQLite version or target platform changes. See the upstream [Node-API release notes](https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.0.0), [Forge rebuild configuration](https://www.electronforge.io/config/configuration#electron-rebuild-config) and [npm install-script policy](https://docs.npmjs.com/cli/v11/commands/npm-approve-scripts/).
+
+The existing tests now use host-valid file URLs, Windows junctions for final/ancestor link rejection, and invalid filename input without creating an OS-invalid file. Linux still checks a final file symlink. The desktop harness removes inherited `ELECTRON_RUN_AS_NODE` entirely, filters undefined environment values, and uses the existing Windows `Ctrl+Y` redo binding. No runtime shortcut or security-policy change was made.
+
+### Environment, commands and isolation
+
+Native Windows x64, Windows_NT `10.0.26100`, Node 24.18.0 / npm 11.16.0 / Electron 44.9.0, SQLite 3.53.4. Commands ran using Windows `C:\Program Files\nodejs\node.exe` and its `npm-cli.js`, invoked through WSL interop; builds and GUI tests were native Windows processes. The check used an isolated `out/windows-check-*` archive of `a6d3f98`, overlaid with the changed config/package/tests, rather than replacing the user's current dependencies. Its own npm cache was used.
+
+The actual native command sequence was `npm-cli.js ci --cache <fixture>/npm-cache --no-fund`, `npm-cli.js run typecheck`, `npm-cli.js test` and `npm-cli.js run package`. Windows Node then set `TYPENUDGE_EXECUTABLE` to the packaged `.exe` and invoked `node_modules/@playwright/test/cli.js test` with `spawnSync` and inherited stdio. Equivalent PowerShell project commands are:
+
+```powershell
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run package
+$env:TYPENUDGE_EXECUTABLE = "$PWD\out\TypeNudge-win32-x64\type-nudge.exe"
+npm.cmd run test:desktop
+Remove-Item Env:TYPENUDGE_EXECUTABLE
+```
+
+Linux regression used a separate `/tmp/typenudge-linux-followup-*` archive with the same changed config/package/tests and the earlier Ubuntu 26.04 x64 / WSLg environment:
+
+```bash
+export PATH=/home/zsolti-wsl/.nvm/versions/node/v24.18.0/bin:$PATH
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --offline --cache /tmp/type-nudge-npm-cache --no-fund
+npm run typecheck
+npm test
+npm run package
+export LD_LIBRARY_PATH=/tmp/type-nudge-linux-deps/extracted/usr/lib/x86_64-linux-gnu
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```
+
+Both suites used their existing isolated temporary `userData`, synthetic text, controlled file-dialog results and external-browser stub. Chromium sandboxing stayed enabled. The user's personal app profile/documents were not opened or changed.
+
+### Final results and initial failures
+
+| Check | Result |
+| --- | --- |
+| Clean native Windows `npm ci` after targeted policy change | Passed: 183 packages added, 184 audited; 0 vulnerabilities reported at that time. |
+| Windows typecheck and unit/SQLite tests | Passed: typecheck; 196/196 tests in 11 files. |
+| Native Windows x64 `npm run package` | Passed; no Visual C++ installation or source rebuild was needed. |
+| Actual Windows packaged executable suite | Passed: 13/13, final run 13.2 seconds; includes import/reindex/delete, personal save/learning, restart persistence, editing, shortcuts, ghost text, IPC/security and stale replies. |
+| Windows package audit | Passed: `win32-x64.node` is marked unpacked in ASAR and physically present with identical bytes to the dependency prebuild; resource `LICENSE` matches; 10,411-byte bundled notices include CodeMirror/MIT. |
+| Clean isolated Linux install/typecheck/unit tests | Passed: offline install; typecheck; 196/196 in 11 files. |
+| Linux x64 package and actual packaged suite | Passed: package; 13/13, final run 12.4 seconds. |
+| Final diff/asset review | `git diff --check` passed; application source, dependency versions, lockfile, branding, legal notices, README diagrams and support section are unchanged. |
+
+Initial Windows unit results were 193/196: a POSIX-only file URL, unavailable file-symlink privileges, and attempting to create a newline-containing filename caused fixture failures. The portable fixtures above passed on both OSes without skipped tests. The first Windows GUI launch inherited the host's `ELECTRON_RUN_AS_NODE=1` despite the old empty-string override; removing the variable allowed launch. The next GUI run was 12/13 because its redo assertion sent Linux's `Ctrl+Shift+Z` instead of the existing Windows `Ctrl+Y` binding. Both harness defects were corrected and the full suite then passed, including a final run after typechecking the environment filter. An intermediate typecheck rejected unfiltered `string | undefined` environment values; the explicit type guard fixed it before final checks.
+
+An initial Windows archive-audit probe used POSIX separators and failed to locate a file through the platform-specific ASAR API; using `path.join` corrected the probe, with no package alteration. A first Linux typecheck attempt against the existing checkout was blocked by its currently Windows-only TypeScript dependency installation. All reported Linux passes instead used the clean isolated Linux installation; the existing checkout's `node_modules` was left intact.
+
+The tested Windows application directory was moved intact to ignored `out/TypeNudge-win32-x64/`; its `type-nudge.exe` can be launched directly, with the full directory retained. A fresh native Windows launch from this final location passed: editor visible, `listSources()` returned `{ ok: true, value: [] }`, and a real `typenudge.sqlite3` existed in its own temporary profile. The initial ad-hoc assertion expected an unwrapped array; correcting it to the actual IPC reply shape passed without changing the app. The probe closed the app and removed its profile. Executable SHA-256: `cea8ef80a311884c854d01470725f6c208b00180eea6c3f0e88fe699821afe83`.
+
+Final screenshots are under ignored `test-results/windows-native-followup/` and `test-results/linux-native-followup/`. Temporary verification checkouts/caches were removed afterwards; the final config/package/test files were byte-compared against both fixtures before cleanup. No installer, signature or publication was created, and no push was performed. Hosted CI, Windows development-server mode, macOS, native Linux outside WSLg, other architectures, physical IME and actual support-browser dispatch remain **Not run** in this follow-up. No performance benchmark was repeated.

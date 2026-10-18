@@ -9,7 +9,7 @@
 
 **TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. Its plain-text CodeMirror editor suggests word completions and likely next words as subtle **ghost text**. Suggestions come from a lightweight, local **unigram/bigram/trigram** model indexed from imported text files and, with explicit consent, saved personal documents. No LLM or cloud API is used.
 
-> **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg and Windows x64.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
 Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text.
 
@@ -115,6 +115,18 @@ npm run dev
 
 On Windows-mounted WSL checkouts, file notifications may miss edits. Restart `npm run dev` if the window keeps serving an older module; use a fresh `package` build for verification.
 
+For native Windows, use Windows Node.js 24.x (24.18.0 or newer) and npm 11.16.0 or newer in PowerShell:
+
+```powershell
+cd C:\P\ghpub\www-temp\type-nudge # adjust to your checkout
+npm.cmd ci
+npm.cmd run dev
+```
+
+Stop development before packaging with `npm.cmd run package`. On Windows x64, the expected executable is `out\TypeNudge-win32-x64\type-nudge.exe`; keep its complete application directory together. `npm.cmd ci` replaces the installed dependencies for the current OS: do not share an active `node_modules` installation between WSL and Windows, and reinstall when switching.
+
+The pinned `better-sqlite3` 13 uses shipped Node-API binaries. `package.json` denies its unnecessary install-time build through npm's `allowScripts` policy, and Forge skips rebuilding only that module through `rebuildConfig.ignoreModules`. Its prebuilds still need to be unpacked from ASAR and checked in the real packaged app. This avoids an unnecessary Windows `node-gyp`/Visual C++ build; other native modules retain Forge's normal rebuild behavior. Revisit both settings when changing the SQLite dependency or targeting a platform without a shipped compatible prebuild.
+
 ```bash
 npm test              # IPC/security and real SQLite integration tests
 npm run typecheck
@@ -123,14 +135,23 @@ npm run package       # builds the current platform's app directory under out/
 npm run test:desktop  # tests the built main/preload/renderer; run package first
 ```
 
-Desktop tests require a working graphical session and use temporary user data. The verified packaged target is **Linux x64 under WSLg / Ubuntu 26.04**. After `npm run package`, launch its application directory or run the same tests against its actual executable:
+Desktop tests require a working graphical session and use temporary user data. Verified packaged targets are **Linux x64 under WSLg / Ubuntu 26.04** and **native Windows x64 (build 26100)**. After `npm run package`, launch its application directory or run the same tests against its actual executable:
 
 ```bash
 ./out/TypeNudge-linux-x64/type-nudge
 TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
 ```
 
-`package` creates an **unsigned application directory**, with native SQLite unpacked from ASAR and Apache/bundled dependency notices included. No installer, signing or publication is configured. Native Windows, macOS, Linux outside WSLg and other architectures remain **Not run**. See [verification](docs/releases/release-0.1-mvp/verification.md) for commands, GUI-library preparation and the platform evidence. Do not package concurrently with `dev`, which rewrites the same `.vite/` build directory.
+For Windows PowerShell:
+
+```powershell
+npm.cmd run package
+$env:TYPENUDGE_EXECUTABLE = "$PWD\out\TypeNudge-win32-x64\type-nudge.exe"
+npm.cmd run test:desktop
+Remove-Item Env:TYPENUDGE_EXECUTABLE
+```
+
+`package` creates an **unsigned application directory**, with native SQLite unpacked from ASAR and Apache/bundled dependency notices included. No installer, signing or publication is configured. macOS, Linux outside WSLg and other architectures remain **Not run**. See [verification](docs/releases/release-0.1-mvp/verification.md) for commands, GUI-library preparation and the platform evidence. Do not package concurrently with `dev`, which rewrites the same `.vite/` build directory.
 
 The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 24.04 to install the lockfile, typecheck and run unit/real SQLite tests. It skips the Electron binary download and does not run GUI, package or publish jobs. Actions are pinned to upstream commit IDs with read-only repository permissions. Its commands passed locally in a fresh temporary installation; **hosted GitHub Actions execution is Not run**. No separate lint configuration is present.
 
@@ -140,7 +161,7 @@ The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All six stories; Linux x64/WSLg package and development checks, CI configuration and measured performance |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All six stories; Linux x64/WSLg and Windows x64 package checks, Linux development checks, CI configuration and measured performance |
 | [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–006 evidence | Real commands, hardware, timings and platform/CI limits |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 

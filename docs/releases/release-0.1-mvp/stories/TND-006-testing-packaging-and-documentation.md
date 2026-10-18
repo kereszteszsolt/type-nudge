@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented — locally verified on Linux x64/WSLg; see [verification](../verification.md#tnd-006--2026-10-18). Hosted CI, other native OS targets, installers/signing and publication remain outside the verified scope.
+Implemented — locally verified on Linux x64/WSLg and Windows x64; see [verification](../verification.md#tnd-006--2026-10-18) and the [Windows packaging follow-up](../verification.md#tnd-006-follow-up--windows-native-packaging-2026-10-18). Hosted CI, other native OS targets, installers/signing and publication remain outside the verified scope.
 
 ## User story
 
@@ -26,6 +26,8 @@ TND-001 through TND-005 implemented and verified.
 - [x] Update README with **verified** launch, build and packaging commands; preserve Mermaid diagrams, Apache-2.0/license headers, brand metadata and Ways to Support links. Record actual commands, outcomes and blockers in release verification before changing release status.
 
 196 unit/integration checks, typecheck and CI-like fresh installation passed. Final full packaged and development runs each passed 13/13; the initial transient typing discrepancy and archive-audit filename assumption are recorded in verification. CI YAML/pins were reviewed and its commands passed locally, but no hosted workflow run is claimed. Benchmarks cover bounded 600/30,000-token corpora, exclude IPC/rendering and provide no worst-case/cross-platform latency guarantee. No application code or dependency change was needed.
+
+The Windows follow-up skips only the pinned Node-API SQLite module's unnecessary npm/Forge rebuild, makes existing test fixtures portable, and verifies real native Windows x64 packaging/SQLite/UI behavior. Dependency versions and application behavior are unchanged; platform results and initial test-harness failures are recorded separately in verification.
 
 ## Out of scope
 

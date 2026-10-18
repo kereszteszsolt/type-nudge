@@ -15,11 +15,14 @@ let pageErrors: string[];
 
 async function launchApplication(): Promise<void> {
   const executablePath = process.env.TYPENUDGE_EXECUTABLE;
+  const environment = Object.fromEntries(Object.entries(process.env).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined && entry[0].toUpperCase() !== 'ELECTRON_RUN_AS_NODE',
+  ));
   application = await _electron.launch({
     executablePath,
     args: [...(executablePath ? [] : ['.']), `--user-data-dir=${userData}`],
     chromiumSandbox: true,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+    env: environment,
   });
   page = await application.firstWindow();
   pageErrors = [];
@@ -105,7 +108,7 @@ test('edits Unicode plain text, selects, copies, pastes and supports undo/redo',
   await expect(editor.locator('.cm-line')).toHaveText(doubled);
   await page.keyboard.press(`${modifier}+z`);
   await expect(editor.locator('.cm-line')).toHaveCount(3);
-  await page.keyboard.press(`${modifier}+Shift+Z`);
+  await page.keyboard.press(process.platform === 'win32' ? 'Control+y' : `${modifier}+Shift+Z`);
   await expect(editor.locator('.cm-line')).toHaveText(doubled);
 });
 
