@@ -2,7 +2,7 @@
 
 ## State
 
-**Release in progress.** TND-001–004 have implementation and real verification evidence below. TND-005–006 remain Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
+**Release in progress.** TND-001–005 have implementation and real verification evidence below. TND-006 remains Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
 
 | Story | Status | Source / unit checks | Desktop / packaging checks | Notes |
 | --- | --- | --- | --- | --- |
@@ -10,7 +10,7 @@
 | TND-002 | Implemented | 67 tests passed, including 22 real SQLite integration tests and 13 source IPC tests; typecheck passed | 6/6 desktop tests passed in development and on the actual Linux x64 packaged executable (WSLg) | SQLite 3.53.4 through better-sqlite3 13.0.3; native files unpacked; Windows/macOS Not run |
 | TND-003 | Implemented | 137 tests passed (70 focused prediction cases); typecheck and synthetic benchmark passed | Not run for this core-only story | Source-filtered prefix/backoff/ranking and bounded cache; no editor/IPC integration yet |
 | TND-004 | Implemented | 167 tests passed (66 focused); typecheck passed | 10/10 tests passed on the actual Linux x64 packaged executable (WSLg) | Inline commands, persisted source/N controls, delayed-reply cancellation and synthetic composition; physical IME/Windows/macOS Not run |
-| TND-005 | Planned | Not run | Not run | No document save or personal learner yet |
+| TND-005 | Implemented | 196 tests passed (30 focused); typecheck passed | 13/13 tests passed on the actual Linux x64 packaged executable (WSLg) | Local documents, default-off save-time learning, schema-1 migration, rollback/reset/deletion and unsaved/stale-IPC protection; Windows/macOS Not run |
 | TND-006 | Planned | Not run | Not run | No CI, release installers or delivery verification yet |
 
 ## Recording conventions
@@ -272,3 +272,53 @@ Actual screenshots under ignored `test-results/` include `inline-suggestions.png
 Native Windows, macOS, Linux outside WSLg, other architectures, installers/signing, physical IME input and assistive-technology hardware: **Not run**. Composition coverage uses synthetic DOM events, not a physical IME. Development-server mode was not repeated for this story; final UI proof uses the actual packaged production executable. External-browser dispatch remains stubbed as in earlier stories.
 
 No new latency benchmark or worst-case typing/corpus measurement was run. The 60 ms debounce is an implementation setting, not a performance result; existing TND-003 measurements exclude IPC/UI. Already-sent IPC work cannot be aborted, and synchronous bounded database/index work still runs in main, outside the renderer event loop. My Writing has no learned corpus until TND-005; choosing it does not enable learning or persist session text.
+
+## TND-005 — 2026-10-18
+
+Implementation approved by the user's request to continue with TND-005. Starting point: clean `dev_r0.1` at TND-004 commit `78381a9`. Separate approval to commit TND-005 after review was received on 2026-10-18; the evidence below was recorded before that commit. Scope: local plain-text documents, unsaved-change protection and explicit opt-in save-time learning; CI/installers/release delivery remain TND-006 work.
+
+### Environment and commands
+
+Ubuntu 26.04 LTS x64 / WSL2 kernel `6.6.87.2-microsoft-standard-WSL2`, WSLg `:0` / `wayland-0`, Node 24.18.0 / npm 11.16.0, existing Electron 44.9.0 / `better-sqlite3` 13.0.3. No dependencies, lockfile or packaging configuration changed. SQLite schema advances to version 2 with a transactional `personal_documents` addition. Existing imported source identities, counts, stored text and settings are preserved.
+
+```bash
+export PATH=/home/zsolti-wsl/.nvm/versions/node/v24.18.0/bin:$PATH
+npm test -- tests/integration/personal.test.ts tests/integration/storage.test.ts
+npm test -- tests/integration/personal.test.ts tests/unit/documents-ipc.test.ts tests/unit/preload.test.ts
+npm test
+npm run typecheck
+export LD_LIBRARY_PATH=/tmp/type-nudge-linux-deps/extracted/usr/lib/x86_64-linux-gnu
+npm run package
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+git diff --check
+```
+
+GUI libraries are the temporary preparation recorded under TND-001. Packaging/graphical checks used execution-sandbox escalation after automatic approval, following the previously established Forge/network and WSLg requirements. Electron's Chromium sandbox remained enabled. Both the first and final packaged desktop runs passed; after adding editor-visible save errors and input validation, the package was rebuilt and the final suite rerun. No check failed in this story's run.
+
+| Check | Observed result |
+| --- | --- |
+| Initial focused personal/storage checks | Passed: 36 tests before adding two further personal resource/deletion cases. |
+| Final focused personal/IPC/preload command | Passed: 3 files, 30 tests (13 real SQLite, 16 document IPC and 1 existing expanded preload case). |
+| Full `npm test` | Passed: 11 files, 196 tests, including all earlier storage/prediction/editor-boundary regressions. |
+| `npm run typecheck` | Passed for application and all test harnesses. |
+| `npm run package` | Passed: actual Linux x64 application directory under `out/TypeNudge-linux-x64`; native SQLite prepared. No installer produced. |
+| Actual packaged executable command | Passed: 13/13 Electron tests in 21.1 seconds on the final build. |
+| `git diff --check` | Passed. Generated packages, temporary DBs/user data, test results and screenshots remain ignored. |
+
+### Behavior and proof boundaries
+
+- Real SQLite tests save/reopen exact Unicode/CRLF/literal-markup text with consent off and no N-gram rows. Enabling consent alone leaves unlearned notes unchanged. Enabled saves replace N=1/2/3 counts; unchanged re-saves preserve frequencies, revisions and cache identity. A SQL trigger deliberately rejects an indexed token and proves text/hash/revision/count/cache rollback, including a failed new-document save.
+- Tests exercise Imported Texts/My Writing/Combined, consent pause/resume, per-document activation preserved through saves, forgotten/deleted/reset contributions and warmed-cache invalidation. Off-state saving removes that note's previous contribution. Forget/reset preserve saved text; reset turns consent off and leaves imported data intact. Deletion cascades one personal document/count set without affecting another.
+- Persistence tests reopen the real DB with consent/activation/text intact. A schema-1 fixture containing real imported rows/counts upgrades to schema 2 without changing them. Updated future-schema tests refuse version 3. Expected revision checks reject stale saves. Combined quotas cover 100 sources/documents and 32 MiB stored UTF-8 text; individual notes are bounded to 1 MiB. Indexing limits are enforced only for enabled learning, permitting unlearned long-token text to be saved.
+- The eight document IPC methods enforce the trusted window/main-frame entry, exact argument counts/keys, UUIDs, revisions, bounded names/text and real booleans. Payloads cannot inject paths, SQL, source IDs or consent through Save. Lists contain only at most 100 summaries; Open returns one body. DB/internal path failures are sanitized while safe conflict/limit messages remain actionable.
+- The real packaged UI creates `Personal first` / `Personal second`, saves `private alpha`, replaces it with `private beta`, verifies exact unigram frequencies and shows a personal `pri` → `vate` completion. Ordinary typing and enabling consent do not persist/index the draft. It toggles personal activation, removes learning, cancels/confirms New, reopens exact text with a fresh undo history, pauses consent and saves `private gamma` without counts.
+- Further UI checks reset personal data with both saved notes and imported counts retained, restart with consent still off, reopen `resettable note`, delete one saved note, and attempt native window close with unsaved text. The real close guard fires; the test stubs only the message-box answer to Keep editing and verifies the window/text remain. Fixture cleanup explicitly discards remaining unsaved text.
+- Controlled test-only Save/Open handlers delay responses to prove typing after Save remains dirty and a late Open cannot overwrite new edits. A failed Save preserves text and shows an error beside the editor. These handlers do not prove storage writes; real persistence/learning cases use production handlers and SQLite. Earlier prediction/keyboard/CSP/sandbox/clipboard/import/small-window checks remain passing.
+
+Actual ignored screenshots include `personal-documents.png`; the saved-document/learning/reset UI was visually inspected. Only synthetic fixtures were used; no user text, runtime database, generated package or screenshot is committed. No automatic filesystem collection, per-keystroke storage, clipboard capture or global hotkey hook was introduced.
+
+### Limits and Not run
+
+Native Windows/macOS, Linux outside WSLg, other architectures, installers/signing/CI, physical IME input, assistive-technology hardware and native support-browser launching: **Not run**. IME coverage remains the earlier synthetic composition checks. Development-server mode was not repeated; runtime proof uses the actual packaged production app.
+
+No new indexing/typing latency benchmark was run; the existing TND-003 measurements are historical core-only observations. Database/index work remains synchronous in main, with asynchronous renderer IPC and stale-result protection. Saved documents are local SQLite data under `userData`, not exported filesystem files. Unsaved drafts are in memory only; forced termination/OS failure recovery is not implemented. Save with learning enabled is atomic: an indexing limit/failure keeps the previous saved revision, and the writer can disable learning to save within text-storage limits.

@@ -13,6 +13,8 @@
 
 SQLite and saved documents reside in the OS-specific Electron `userData` directory with normal user-level permissions. Do not commit databases, imported text, personal notes, or build artifacts to Git. Provide source deletion and reset of learned content. Explain that backups or normal OS filesystem access may expose the unencrypted DB — do not advertise cryptographic protection that does not exist.
 
+TND-005 saves documents only after Save/Ctrl+S. Prediction IPC still carries only bounded word context; full text crosses the separate validated save call only for that explicit action. Learning is off by default, starts on a future enabled Save and is not activated by source-mode selection. Turning it off pauses personal predictions; per-note forgetting and personal reset remove counts without deleting imports or saved text. Delete removes the selected saved note and its contribution. Window/document switching guards unsaved edits; there is no autosaved draft, background crawler or global keyboard/clipboard hook.
+
 ## Import safety
 
 Accept `.txt` and `.md` only, with explicit UTF-8 decoding, file-count/size caps and recoverable errors. Do not follow symlink chains or recursively scan a directory in the MVP. No automatic import of clipboard, browser, email or documents from other applications.

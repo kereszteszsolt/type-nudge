@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-import { app, BrowserWindow, Menu, session } from 'electron';
+import { app, BrowserWindow, Menu, session, dialog } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import branding from '../../brand/branding.json';
@@ -10,6 +10,7 @@ import { allowRequest, localDevEntry } from './security';
 import { registerSourcesIpc } from './sources-ipc';
 import { SourceStore } from './storage/store';
 import { registerPredictionIpc } from './prediction-ipc';
+import { registerDocumentsIpc } from './documents-ipc';
 
 app.setName(branding.appName);
 app.enableSandbox();
@@ -50,6 +51,14 @@ function createWindow(): void {
   current.webContents.on('will-navigate', (event) => event.preventDefault());
   current.webContents.on('will-redirect', (event) => event.preventDefault());
   current.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  current.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(current, {
+      type: 'question', buttons: ['Discard unsaved changes', 'Keep editing'], defaultId: 1, cancelId: 1,
+      title: 'Unsaved document', message: 'This document has unsaved changes.',
+      detail: 'Choose Keep editing to return and save your text.', noLink: true,
+    });
+    if (choice === 0) event.preventDefault();
+  });
   current.once('ready-to-show', () => current.show());
   current.on('closed', () => { window = null; });
   void current.loadURL(entry).catch((error: unknown) => {
@@ -68,6 +77,7 @@ void app.whenReady().then(() => {
   registerAppIpc(() => window, entry, branding, app.getVersion());
   registerSourcesIpc(() => window, entry, getStore);
   registerPredictionIpc(() => window, entry, getStore);
+  registerDocumentsIpc(() => window, entry, getStore);
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
     { label: 'File', submenu: [{ role: 'quit' }] },

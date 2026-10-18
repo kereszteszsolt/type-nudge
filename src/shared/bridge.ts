@@ -3,6 +3,7 @@
 
 import type { SourcesBridge } from './sources';
 import type { PredictionBridge } from './prediction';
+import type { DocumentsBridge } from './documents';
 
 export const channels = {
   appInfo: 'app:info',
@@ -28,7 +29,7 @@ export interface AppInfo {
   links: { id: LinkId; label: string }[];
 }
 
-export interface DesktopBridge extends SourcesBridge, PredictionBridge {
+export interface DesktopBridge extends SourcesBridge, PredictionBridge, DocumentsBridge {
   getAppInfo(): Promise<AppInfo>;
   openLink(id: LinkId): Promise<void>;
 }

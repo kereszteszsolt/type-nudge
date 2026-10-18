@@ -2,18 +2,19 @@
 
 The release design uses **one local SQLite database** under Electron's `userData` for source identities, documents, source content required for intentional reindexing, unigram/bigram/trigram counts, active source flags and settings. No remote DB or service is planned.
 
-TND-002 implements the imported-source portion in `typenudge.sqlite3`. TND-004 opens it when the UI loads local prediction preferences. WAL sidecars belong to the same logical database. Main-process code owns the only runtime DB connection, closes it on quit, enables foreign keys, and initializes schema version 1 transactionally. A newer schema version is refused rather than downgraded. TND-003 adds a read-only prediction repository on that same connection. TND-004 adds activation and settings controls using the existing schema without reindexing. Personal document saving/learning remains later work.
+TND-002 implements the imported-source portion in `typenudge.sqlite3`. TND-004 opens it when the UI loads local prediction preferences. WAL sidecars belong to the same logical database. Main-process code owns the only runtime DB connection, closes it on quit, enables foreign keys, and migrates schema 1 to **schema 2** transactionally for TND-005. Migration adds personal document storage without modifying imported rows, preferences or counts. A newer schema version is refused rather than downgraded. TND-003 adds a read-only prediction repository on that same connection; TND-004/005 add activation, settings and opt-in learning controls.
 
 ## Storage model
 
 | Table | Representative fields | Purpose |
 | --- | --- | --- |
 | `sources` | `id`, `kind` (`imported`/`personal`), `display_name`, `enabled`, `revision`, `content_hash`, timestamps | Independently managed corpus membership |
-| `documents` | `id`, `source_id`, `body_text`, `byte_length` | Retained UTF-8 text, enabling reindex of each source; editor saving remains planned |
+| `documents` | `id`, `source_id`, `body_text`, `byte_length` | Retained imported UTF-8 text for per-source reindexing |
+| `personal_documents` | `id`, `source_id`, `body_text`, `byte_length`, nullable `learned_hash` | Explicitly saved personal text, independent of whether any counts are learned |
 | `ngrams` | `source_id`, `n`, `context_key`, `next_token`, `frequency` | Counts by source and N=1/2/3 |
 | `settings` | `key`, JSON `value` | Initial source mode, enabled N, personal-learning consent and index revision |
 
-The schema is defined in `src/main/storage/store.ts`. Documents have an ID, unique source reference with cascading deletion, body text and UTF-8 byte length. Sources include a hashed canonical-path identity, display name, enabled flag, revision, SHA-256 content hash, token count and timestamps. N-grams additionally keep the first observed display spelling. Settings initially store `personalLearning=false`, `sourceMode="imported"`, `enabledN=[1,2,3]`, and an integer `indexRevision`. TND-004 atomically persists `sourceMode` (`imported`, `personal`, `combined`) and a nonempty subset of N=1/2/3; it never writes learning consent. Personal learning remains unimplemented.
+The schema is defined in `src/main/storage/store.ts`. Imported retained copies remain in `documents`. Personal notes use a separate UUID and unique source reference with cascading deletion; their source has `kind='personal'` and no filesystem origin. Source metadata keeps the saved name, revision, content hash, enabled flag and timestamps. Personal `token_count` is zero when unlearned; `learned_hash` is null or identifies the saved content explicitly learned. Bodies are not duplicated in the import table. N-grams keep the first observed display spelling. Initial settings remain `personalLearning=false`, `sourceMode="imported"`, `enabledN=[1,2,3]`, and `indexRevision=0`. Prediction settings writes cannot change consent; the separate `documents:learning` call requires a boolean.
 
 The N-gram primary key `(source_id, n, context_key, next_token)` supports per-source context/prefix ranges. An additional `(n, next_token COLLATE BINARY, source_id)` index supports prefix-first lookups. All text values use bound SQL parameters. List responses contain at most 100 summaries, never stored bodies or the full index.
 
@@ -31,14 +32,20 @@ Reindex reads the stored body and needs no access to the original file. Deleting
 ## Import bounds and token rules
 
 - Only explicitly selected regular `.txt` / `.md` files, with case-insensitive extensions and fatal UTF-8 decoding. Reject control characters in names and binary/control characters in bodies (tabs, CR and LF are allowed). Reject symbolic links, linked parent folders, directories and traversal-style paths; never scan a directory.
-- At most **10 files**, **1 MiB per file**, **4 MiB per selection**, **100 stored sources**, **32 MiB total stored UTF-8 text**, **50,000 tokens per file**, and **128 Unicode code points per word**. Bounded reads also detect overgrowth/changed metadata during import. Counts are computed in main-process memory per bounded source, never in the renderer.
+- At most **10 files**, **1 MiB per file**, **4 MiB per selection**, **100 combined imported sources/personal documents**, **32 MiB total stored UTF-8 text**, **50,000 tokens per indexed text**, and **128 Unicode code points per indexed word**. Bounded reads also detect overgrowth/changed metadata during import. Counts are computed in main-process memory per bounded source, never in the renderer.
 - Token keys use Unicode NFC and locale-independent lowercase. Letters/numbers with combining marks form words; internal straight/curly apostrophes belong to a word and normalize to a straight apostrophe in the key. Accents are preserved, with the first original NFC spelling retained for display.
 - `. ! ? 。 ！ ？ ; :`, CR and LF end a context. Other punctuation (including commas/hyphens) separates words. Contexts are reset at every sentence/line/document boundary. This conservative rule intentionally does not infer abbreviations or perform language-specific segmentation. CJK runs are kept as written, without morphological tokenization.
 - N=1 uses the empty context string. N=2/3 use JSON arrays of the previous one/two normalized tokens, avoiding ambiguous word separators. All three orders are indexed; TND-003 queries only the explicitly enabled orders with longest-context backoff.
 
 ## Personal writing
 
-New saved notes belong to their own personal source/document identity. The **Learn from my writing** preference is **off by default**. Save always persists the user's note (when explicitly requested); index only if consent is on. Updating a saved note replaces its index contribution atomically; disabling learning stops future collection and excludes personal corpus from predictions according to user preference. Provide a way to remove/reset personal learned data.
+TND-005 implements local New/Save/Open/Delete. Save accepts exactly an opaque ID/null, expected revision/null, name and text; names have 1–120 code points with no control/format characters, bodies are well-formed Unicode plain text (tab/CR/LF allowed) with a 1 MiB UTF-8 limit. Both imports and notes share the 100-item/32 MiB budgets. Lists contain at most 100 summaries without bodies; Open returns one explicitly selected body. No renderer path or arbitrary SQL is accepted. Saved text preserves Unicode spelling and line endings.
+
+**Learn from my writing** starts off, independently of Save. Enabling never bulk-indexes existing notes. An enabled Save tokenizes only that saved snapshot and commits saved body, source/hash/revision, replacement counts and `indexRevision` together. Unchanged re-saves are no-ops when the learning state already matches, so frequencies/revisions/cache identity remain stable. A failed index/write rolls the whole operation back; the UI retains the unsaved text. Stale expected revisions are rejected rather than overwriting newer saves. Notes with words/token counts over indexing limits can be saved with learning off, within storage limits.
+
+Turning learning off retains existing counts but excludes all personal sources from prediction queries immediately. Saving a note while off clears that note's old counts and `learned_hash`, so re-enabling cannot revive an older version of that saved note. Per-note **Use** flags survive saves; source mode, consent and these flags all gate personal predictions. Source/consent/count changes advance `indexRevision` and refresh the renderer's request generation; imports remain independently selectable.
+
+**Remove learning** clears one note's counts while retaining the saved body and activation flag; a later enabled Save can learn it again. **Reset personal learned data** transactionally clears all personal counts/hashes and turns learning off, preserving notes and imported sources/counts/preferences. **Delete** removes one personal source and cascades to its document/counts. No full-corpus rebuild or per-keystroke persistence occurs.
 
 ## SQLite queries and indexing
 

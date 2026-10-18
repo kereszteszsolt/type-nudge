@@ -11,7 +11,7 @@
 | [TND-005](releases/release-0.1-mvp/stories/TND-005-personal-writing-and-learning.md) | Personal writing and learning | TND-002, TND-004 |
 | [TND-006](releases/release-0.1-mvp/stories/TND-006-testing-packaging-and-documentation.md) | Testing, packaging and release verification | TND-001–005 |
 
-See [Release overview](releases/release-0.1-mvp/README.md) and [verification](releases/release-0.1-mvp/verification.md). TND-001–004 provide the editor, source index, prediction core, inline suggestions and persisted source/N settings; TND-005–006 remain Planned. The full release is not complete.
+See [Release overview](releases/release-0.1-mvp/README.md) and [verification](releases/release-0.1-mvp/verification.md). TND-001–005 provide the editor, source index, inline suggestions/settings and local documents with opt-in learning; TND-006 remains Planned. The full release is not complete.
 
 ## Later possibilities
 

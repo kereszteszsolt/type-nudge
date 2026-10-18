@@ -74,6 +74,7 @@ describe('real SQLite source storage', () => {
     expect(store.predictionSourceIds('imported')).toEqual([second.id]);
     expect(store.predictionSourceIds('personal')).toEqual([]);
     inspection.prepare("UPDATE sources SET kind = 'personal' WHERE id = ?").run(second.id);
+    store.personal.setLearning(true);
     expect(store.predictionSourceIds('imported')).toEqual([]);
     expect(store.predictionSourceIds('personal')).toEqual([second.id]);
     expect(store.predictionSourceIds('combined')).toEqual([second.id]);
@@ -89,12 +90,12 @@ describe('real SQLite source storage', () => {
   });
 
   it('migrates a persistent DB with consent off, all N sizes, constraints and lookup indexes', () => {
-    expect(inspection.pragma('user_version', { simple: true })).toBe(1);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(2);
     expect(inspection.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get()).toEqual({ value: 'false' });
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'enabledN'").get()).toEqual({ value: '[1,2,3]' });
     expect(inspection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all())
-      .toEqual(['documents', 'ngrams', 'settings', 'sources'].map((name) => ({ name })));
+      .toEqual(['documents', 'ngrams', 'personal_documents', 'settings', 'sources'].map((name) => ({ name })));
     expect(() => inspection.prepare('INSERT INTO ngrams VALUES (?, 4, ?, ?, ?, 1)').run('unknown', '', 'a', 'a')).toThrow();
     expect(inspection.pragma('integrity_check', { simple: true })).toBe('ok');
   });
@@ -214,9 +215,9 @@ describe('real SQLite source storage', () => {
   });
 
   it('does not modify or downgrade a newer schema', () => {
-    inspection.pragma('user_version = 2');
+    inspection.pragma('user_version = 3');
     expect(() => new SourceStore(path.join(directory, 'sources.sqlite3'))).toThrow('newer version');
-    expect(inspection.pragma('user_version', { simple: true })).toBe(2);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(3);
   });
 
   it('enforces source count and cumulative stored-text limits without damaging existing sources', () => {

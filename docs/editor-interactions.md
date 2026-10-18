@@ -1,6 +1,6 @@
 # Editor behavior
 
-**Available through TND-004:** plain-text CodeMirror editing, imported text sources, inline word completions, source/N controls, Unicode input, wrapping, selection, copy/paste, undo/redo, and a keyboard-accessible About dialog. Tab traverses focus when no suggestion is available. The editor has an accessible name and visible focus. Text remains in memory for the current session only; the footer explicitly explains that closing the window discards it. Saving and personal learning remain TND-005 work.
+**Available through TND-005:** plain-text CodeMirror editing, imported and opted-in personal sources, inline completions, source/N controls, explicit document saving, Unicode input, wrapping, selection, copy/paste, undo/redo, and keyboard-accessible dialogs. Tab traverses focus when no suggestion is available. The editor has an accessible name and visible focus. Unsaved changes remain in memory; Save persists text locally and optionally learns from that saved snapshot.
 
 The MVP is a simple **plain-text** editor with CodeMirror 6. It is not a code IDE, rich-text document creator or global keyboard assistant.
 
@@ -21,7 +21,7 @@ When no suggestion exists, keyboard input must behave normally. Never interfere 
 - **Learn from my writing:** independent, explicit opt-in (default off). No keylogger; saving a document triggers an optional index update.
 - **Visible guidance:** short explanation of offline prediction, source status and keyboard hints; no intrusive AI marketing claims.
 
-Source mode and N checkboxes are visible above the editor; **Sources** holds individual imported-file activation controls. The final selected N checkbox is disabled until another N is enabled. Preferences and activation persist in SQLite. **My Writing** currently shows an explicit empty state; no personal learning control or save operation is implemented in this story. **Combined** currently uses active imported files, with personal data to follow in TND-005. Import/reindex status does not lock the editor, and suggestions are suspended while a source operation is pending.
+Source mode and N checkboxes are visible above the editor; **Sources** holds individual imported-file activation controls. The final selected N checkbox is disabled until another N is enabled. Preferences and activation persist in SQLite. **Documents** contains saved notes, the learning checkbox and each personal note's **Use** flag. **My Writing** queries enabled learned notes only while learning is on; **Combined** also queries active imports. Empty/inactive corpora show guidance. Import, document and preference operations suspend suggestions until all pending operations finish; the editor remains available.
 
 `suggestions.ts` provides a focused CodeMirror view plugin, noneditable `aria-hidden` widget and highest-precedence conditional keymap. Display text uses `textContent`; the widget never enters the editor document or clipboard. Acceptance is one isolated undo step. Selection, midword carets, blur and composition suppress suggestions; normal editing shortcuts pass through. Composition start/end is exercised with synthetic DOM events; physical IME and assistive-technology checks remain manual work.
 
@@ -29,7 +29,11 @@ The renderer reads at most 4,096 UTF-16 units before the caret on its current li
 
 ## State and persistence
 
-Editor text should be maintained without surprise auto-rewriting. User intentionally saves a document. Preserve the saved document separately from its learned contribution; re-saving must not inflate frequencies. Preferences persist locally across restarts, while ephemeral ghost suggestions do not.
+**New** starts an untitled document; **Save** or **Ctrl/Cmd+S** persists its name and text. **Documents → Open** reopens a saved note; switching resets undo history so undo cannot insert another note's content. A title `*` and footer indicate unsaved changes. New/Open ask before discarding them; Delete confirms removal of stored text/counts. Window close offers Keep editing or explicit discard through Electron's [will-prevent-unload handler](https://www.electronjs.org/docs/latest/api/web-contents#event-will-prevent-unload). No draft is automatically restored after restart.
+
+Saving uses the name/text snapshot present when Save was requested. Typing during pending IPC stays in the editor and remains dirty; a failed save leaves the text intact and shows a visible error beside the editor. A late open is canceled if the writer edited the current note while it loaded. Main-process revision checks reject stale overwrites. Only an explicit Save sends the document body for persistence; ordinary prediction requests still send only bounded prefix/context. Documents and preferences persist across restarts; ghost state does not.
+
+Learning is off by default and separate from Save. Enabling never bulk-indexes notes. An enabled Save replaces one contribution; unchanged re-saves are idempotent. Turning learning off pauses personal predictions while retaining prior learned data. A save while off removes that note's old contribution, avoiding stale counts after later re-enabling. **Remove learning** keeps saved text; a later enabled Save may learn it again. **Reset personal learned data** clears all personal contributions and turns learning off, retaining notes and imports.
 
 ## Performance and errors
 

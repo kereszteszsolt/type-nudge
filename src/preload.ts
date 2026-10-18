@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { channels, type DesktopBridge, type LinkId } from './shared/bridge';
 import { sourceChannels } from './shared/sources';
 import { predictionChannels, type PredictionInput, type PredictionSettings } from './shared/prediction';
+import { documentChannels, type SaveDocument } from './shared/documents';
 
 const bridge: DesktopBridge = Object.freeze({
   getAppInfo: () => ipcRenderer.invoke(channels.appInfo),
@@ -17,6 +18,14 @@ const bridge: DesktopBridge = Object.freeze({
   predict: (input: PredictionInput) => ipcRenderer.invoke(predictionChannels.predict, input),
   getPredictionSettings: () => ipcRenderer.invoke(predictionChannels.settings),
   setPredictionSettings: (settings: PredictionSettings) => ipcRenderer.invoke(predictionChannels.configure, settings),
+  listDocuments: () => ipcRenderer.invoke(documentChannels.list),
+  openDocument: (id: string) => ipcRenderer.invoke(documentChannels.open, id),
+  saveDocument: (input: SaveDocument) => ipcRenderer.invoke(documentChannels.save, input),
+  deleteDocument: (id: string) => ipcRenderer.invoke(documentChannels.delete, id),
+  setPersonalLearning: (enabled: boolean) => ipcRenderer.invoke(documentChannels.learning, enabled),
+  setDocumentEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke(documentChannels.enable, id, enabled),
+  forgetDocument: (id: string) => ipcRenderer.invoke(documentChannels.forget, id),
+  resetPersonalLearning: () => ipcRenderer.invoke(documentChannels.reset),
 });
 
 contextBridge.exposeInMainWorld('typeNudge', bridge);

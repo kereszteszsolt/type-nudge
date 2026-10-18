@@ -6,6 +6,7 @@ import type { LinkId } from '../shared/bridge';
 import './styles.css';
 import { initializeSources } from './sources';
 import { initializePrediction } from './prediction-controls';
+import { initializeDocuments } from './documents';
 
 function element<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -15,7 +16,9 @@ function element<T extends HTMLElement>(id: string): T {
 
 async function start(): Promise<void> {
   const prediction = initializePrediction();
-  const editor = createEditor(element('editor'), prediction.extension);
+  const documents = initializeDocuments(prediction.documentsBusy);
+  const editor = createEditor(element('editor'), [prediction.extension, documents.extension]);
+  documents.attach(editor);
   initializeSources(prediction.sourcesBusy);
   prediction.start();
   const info = await window.typeNudge.getAppInfo();

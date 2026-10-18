@@ -1,6 +1,6 @@
 # Testing and evidence plan
 
-TND-001–004 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001–005 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
 
 ## Foundation checks
 
@@ -51,6 +51,19 @@ TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desk
 Pure CodeMirror state tests exercise bounded caret/context extraction, sentence/line boundaries, selections/multiple carets/midword suppression, Unicode suffix preservation and long input. The async gate tests cover debounce, out-of-order/ABA replies, cancellation, failed replies and destruction. Main/preload tests reject renderer-selected SQL, paths, source IDs, N overrides, malformed/overlong words, nonempty-N violations, extra settings and untrusted senders. Real SQLite tests exercise transactional preference writes/rollback, persistence, source modes, idempotent activation and unchanged counts/other sources.
 
 The real packaged Electron suite adds prefix/next-word/Unicode completion, all three keys, cycling wraparound, copy excluding ghost text, completion undo, persistent mode/N/activation, empty corpus and immediate N behavior. Controlled delayed IPC handlers exercise out-of-order typing replies, cursor movement, settings/source changes, dismissal while pending, failure/retry and synthetic IME composition. A delayed dialog plus delayed preference reply verifies that editing stays available and suggestions remain suspended until both operations finish. Those controlled handlers are test-only and restored by restarting Electron. Physical IME, accessibility hardware and other OS targets remain separately unverified.
+
+## Personal documents and opt-in learning (TND-005)
+
+```bash
+npm test -- tests/integration/personal.test.ts tests/unit/documents-ipc.test.ts tests/unit/preload.test.ts
+npm run typecheck
+npm run package
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```
+
+Thirteen real SQLite cases cover default-off/save-only behavior, unchanged saves, replacement counts, consent/activation/source modes, forget/reset/delete, restart persistence, shared resource budgets, schema-1 migration, stale revisions and rollback on a deliberately rejected N-gram write. Sixteen IPC cases validate the eight named operations, trusted sender, bounded document fields, UUIDs, exact boolean preferences, rejected path/SQL/consent injection and sanitized errors; the existing preload check includes their named bridge methods.
+
+The packaged suite adds real Save/Ctrl+S/Open/New/Delete/Remove learning/Reset flows, stored text/count inspections, no indexing on ordinary typing or opt-in alone, off-state saves removing prior counts, personal prefix suggestions/deactivation, restart persistence and unchanged imported data. It checks discard cancellation, per-document undo isolation and a real window-close attempt with Keep editing. Controlled test-only delayed Save/Open replies prove later typing is retained and dirty; a failed Save leaves a visible error and preserves text. These last fixture handlers do not commit data and are separate from the production SQLite persistence checks.
 
 ## Later release test plan
 

@@ -15,7 +15,8 @@ it('exposes named operations without raw IPC, events, SQL or filesystem access',
   const [name, bridge] = mocks.expose.mock.calls[0] as [string, DesktopBridge];
   expect(name).toBe('typeNudge');
   expect(Object.keys(bridge)).toEqual(['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource',
-    'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings']);
+    'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings', 'listDocuments', 'openDocument', 'saveDocument',
+    'deleteDocument', 'setPersonalLearning', 'setDocumentEnabled', 'forgetDocument', 'resetPersonalLearning']);
   expect(Object.isFrozen(bridge)).toBe(true);
   await bridge.getAppInfo();
   await bridge.openLink('appGithubUrl');
@@ -27,10 +28,16 @@ it('exposes named operations without raw IPC, events, SQL or filesystem access',
   await bridge.predict({ prefix: 'wo', context: ['write'] });
   await bridge.getPredictionSettings();
   await bridge.setPredictionSettings({ sourceMode: 'combined', enabledN: [1, 3] });
+  const document = { id: null, revision: null, name: 'Note', text: 'text' };
+  await bridge.listDocuments(); await bridge.openDocument('note-id'); await bridge.saveDocument(document);
+  await bridge.deleteDocument('note-id'); await bridge.setPersonalLearning(true);
+  await bridge.setDocumentEnabled('note-id', false); await bridge.forgetDocument('note-id'); await bridge.resetPersonalLearning();
   expect(mocks.invoke.mock.calls).toEqual([
     ['app:info'], ['app:open-link', 'appGithubUrl'], ['sources:list'], ['sources:import'],
     ['sources:reindex', 'source-id'], ['sources:delete', 'source-id'],
     ['sources:enable', 'source-id', false], ['prediction:query', { prefix: 'wo', context: ['write'] }],
     ['prediction:settings'], ['prediction:configure', { sourceMode: 'combined', enabledN: [1, 3] }],
+    ['documents:list'], ['documents:open', 'note-id'], ['documents:save', document], ['documents:delete', 'note-id'],
+    ['documents:learning', true], ['documents:enable', 'note-id', false], ['documents:forget', 'note-id'], ['documents:reset'],
   ]);
 });

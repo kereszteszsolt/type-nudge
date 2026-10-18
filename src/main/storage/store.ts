@@ -9,6 +9,7 @@ import { countNgrams } from './tokenize';
 import { SqlitePredictionRepository } from '../prediction/sqlite-repository';
 import type { PredictionRepository } from '../prediction/types';
 import { validatePredictionSettings, type PredictionSettings, type SourceMode } from '../../shared/prediction';
+import { PersonalStore } from './personal';
 
 interface SourceRow {
   id: string; name: string; enabled: number; revision: number;
@@ -20,12 +21,13 @@ const summaryColumns = `id, display_name AS name, enabled, revision,
 
 export class SourceStore {
   private readonly db: Database.Database;
+  readonly personal: PersonalStore;
 
   constructor(filename: string) {
     this.db = new Database(filename);
     try {
       const version = this.db.pragma('user_version', { simple: true }) as number;
-      if (version > 1) throw new SourceError('This database needs a newer version of TypeNudge.');
+      if (version > 2) throw new SourceError('This database needs a newer version of TypeNudge.');
       this.db.pragma('foreign_keys = ON');
       this.db.pragma('journal_mode = WAL');
       this.db.pragma('busy_timeout = 5000');
@@ -66,6 +68,16 @@ export class SourceStore {
           PRAGMA user_version = 1;
         `);
       })();
+      if (version < 2) this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE personal_documents (
+          id TEXT PRIMARY KEY,
+          source_id TEXT NOT NULL UNIQUE REFERENCES sources(id) ON DELETE CASCADE,
+          body_text TEXT NOT NULL,
+          byte_length INTEGER NOT NULL CHECK(byte_length >= 0),
+          learned_hash TEXT CHECK(learned_hash IS NULL OR length(learned_hash) = 64)
+        ); PRAGMA user_version = 2;`);
+      })();
+      this.personal = new PersonalStore(this.db);
     } catch (error) {
       this.db.close();
       throw error;
@@ -99,6 +111,7 @@ export class SourceStore {
 
   predictionSourceIds(mode: SourceMode): string[] {
     return (this.db.prepare(`SELECT id FROM sources WHERE enabled = 1 AND
+      (kind = 'imported' OR (SELECT value FROM settings WHERE key = 'personalLearning') = 'true') AND
       (? = 'combined' OR kind = ?) ORDER BY id LIMIT ?`).all(mode, mode, importLimits.sources) as { id: string }[]).map((row) => row.id);
   }
 
@@ -128,7 +141,9 @@ export class SourceStore {
       const old = this.db.prepare("SELECT id, content_hash FROM sources WHERE origin_key = ? AND kind = 'imported'")
         .get(originKey) as { id: string; content_hash: string } | undefined;
       if (old?.content_hash === hash) return 'unchanged' as const;
-      const total = this.db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(byte_length), 0) AS bytes FROM documents`)
+      const total = this.db.prepare(`SELECT (SELECT COUNT(*) FROM sources) AS count,
+        (SELECT COALESCE(SUM(byte_length), 0) FROM documents) +
+        (SELECT COALESCE(SUM(byte_length), 0) FROM personal_documents) AS bytes`)
         .get() as { count: number; bytes: number };
       const oldBytes = old ? (this.db.prepare('SELECT byte_length AS bytes FROM documents WHERE source_id = ?').get(old.id) as { bytes: number }).bytes : 0;
       if (!old && total.count >= importLimits.sources) throw new SourceError('The source limit is 100. Delete a source before adding another.');

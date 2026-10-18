@@ -2,7 +2,7 @@
 
 ## Status and approved boundaries
 
-The original documentation-only baseline now includes **TND-001–004**: editor, SQLite/import, prediction core, inline suggestions and persisted source/N controls. Release 0.1 is **In progress**. The repository contains the per-source index, deterministic prediction/backoff/cache and focused tests; personal saving/learning, CI and release installers remain planned. Consult the active story and verification before presenting any behavior as implemented or verified.
+The original documentation-only baseline now includes **TND-001–005**: editor, SQLite/import, inline predictions/settings, local documents and opt-in save-time learning. Release 0.1 is **In progress**. The repository contains the per-source index, deterministic prediction/backoff/cache and focused tests; CI and release installers remain planned. Consult the active story and verification before presenting any behavior as implemented or verified.
 
 The agreed MVP is a **single Electron/TypeScript desktop app** with CodeMirror 6, local SQLite indexing, N=1/2/3 word predictions, prefix completion, inline ghost text, selectable text sources, save-time opt-in learning, and Electron Forge packaging. No external API, server backend, cloud model, account, global keyboard monitoring or shared writing history.
 

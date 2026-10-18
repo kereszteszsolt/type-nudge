@@ -30,6 +30,9 @@ button:hover { background: #edf1eb; }
 .app-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid #e0e3db; }
 .identity { display: flex; align-items: center; gap: 12px; }
 .header-actions { display: flex; gap: 8px; }
+.document-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; }
+#document-name { min-width: 0; flex: 1; padding: 7px; border: 1px solid #d1d7cf; border-radius: 6px; color: inherit; background: #fff; }
+.learning-label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 .app-mark { font-family: Georgia, serif; font-size: 28px; font-weight: 700; color: #315e49; }
 .app-mark span { font-size: 20px; }
 h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
@@ -37,6 +40,8 @@ main { min-height: 0; width: min(100% - 64px, 820px); margin: 24px auto; display
 .document-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 12px; }
 h2 { font-size: 16px; margin: 0; font-weight: 600; }
 .document-heading span { color: #626d64; font-size: 12px; }
+.document-heading h2 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#document-error { margin: 0 0 10px; color: #9b302e; font-size: 12px; overflow-wrap: anywhere; }
 #editor { min-height: 0; flex: 1; background: #fff; border: 1px solid #dce1d7; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #29362f06; }
 .prediction-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
 .prediction-controls fieldset { display: flex; gap: 10px; border: 0; padding: 0; margin: 0 0 0 auto; }
@@ -51,18 +56,26 @@ dialog p { font-size: 14px; line-height: 1.5; }
 dialog nav { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 8px 0; font-size: 13px; }
 dialog form { text-align: right; margin-top: 20px; }
 #link-error { color: #9b302e; }
-#sources-dialog { width: min(720px, 94vw); max-height: 88vh; overflow: auto; }
+#sources-dialog, #documents-dialog { width: min(760px, 94vw); max-height: 88vh; overflow: auto; }
 .source-note { color: #626d64; }
 #sources-status { white-space: pre-line; overflow-wrap: anywhere; }
 #sources-list { padding: 0; list-style: none; }
 #sources-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid #e0e3db; }
 #sources-list strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
 #sources-list span { display: block; margin-top: 5px; font-size: 12px; color: #626d64; }
+#documents-list { padding: 0; list-style: none; }
+#documents-list li { display: flex; flex-direction: column; align-items: start; gap: 10px; padding: 14px 0; border-top: 1px solid #e0e3db; }
+#documents-list strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
+#documents-list span { display: block; margin-top: 5px; font-size: 12px; color: #626d64; }
+#documents-list .source-actions { flex-wrap: wrap; }
 .source-actions { display: flex; gap: 8px; flex-shrink: 0; font-size: 12px; }
 #startup-error { position: fixed; bottom: 35px; left: 24px; right: 24px; background: #fff0ed; padding: 14px; border: 1px solid #bb5a4b; }
 
 @media (max-width: 600px) {
   .app-header { padding: 14px 18px; }
+  .identity { gap: 6px; }
+  .header-actions { gap: 4px; }
+  .header-actions button { padding: 6px 8px; font-size: 12px; }
   main { width: calc(100% - 32px); margin: 16px auto; }
   .status-bar { padding: 10px 18px; align-items: start; }
   #sources-list li { align-items: start; flex-direction: column; }

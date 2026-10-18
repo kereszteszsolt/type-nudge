@@ -5,11 +5,10 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 
+const configurations = new WeakMap<EditorView, Extension>();
+
 export function createEditor(parent: HTMLElement, suggestions: Extension = []): EditorView {
-  return new EditorView({
-    parent,
-    state: EditorState.create({
-      extensions: [
+  const extensions: Extension = [
         suggestions,
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -33,7 +32,15 @@ export function createEditor(parent: HTMLElement, suggestions: Extension = []): 
           spellcheck: 'false',
         }),
         placeholder('Start writing…'),
-      ],
-    }),
-  });
+      ];
+  const view = new EditorView({ parent, state: EditorState.create({ extensions }) });
+  configurations.set(view, extensions);
+  return view;
+}
+
+export function replaceEditorDocument(view: EditorView, doc: string): void {
+  const extensions = configurations.get(view);
+  if (!extensions) throw new Error('Unknown editor configuration.');
+  // A newly opened document must not inherit another document's undo history.
+  view.setState(EditorState.create({ doc, extensions }));
 }

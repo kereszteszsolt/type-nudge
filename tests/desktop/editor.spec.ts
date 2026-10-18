@@ -28,13 +28,19 @@ async function launchApplication(): Promise<void> {
   await expect(page.getByRole('button', { name: 'About', exact: true })).toBeEnabled();
 }
 
+async function closeApplication(): Promise<void> {
+  if (!application) return;
+  await application.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+  await application.close();
+}
+
 test.beforeAll(async () => {
   userData = await mkdtemp(path.join(tmpdir(), 'typenudge-smoke-'));
   await launchApplication();
 });
 
 test.afterAll(async () => {
-  await application?.close();
+  await closeApplication();
   if (userData) await rm(userData, { recursive: true, force: true });
 });
 
@@ -64,7 +70,8 @@ test('starts one isolated window with restrictive CSP and a narrow bridge', asyn
     process: typeof (window as unknown as { process?: unknown }).process,
     bridge: Object.keys(window.typeNudge),
   }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource',
-    'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings'] });
+    'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings', 'listDocuments', 'openDocument', 'saveDocument',
+    'deleteDocument', 'setPersonalLearning', 'setDocumentEnabled', 'forgetDocument', 'resetPersonalLearning'] });
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("default-src 'none'");
   expect(csp).not.toContain('unsafe-inline');
@@ -213,7 +220,7 @@ test('imports selected files, replaces/reindexes/deletes independently and persi
   expect(inspect((db) => db.prepare('SELECT COUNT(*) AS count FROM documents WHERE source_id = ?').get(firstId))).toEqual({ count: 0 });
   await page.screenshot({ path: test.info().outputPath('sources.png') });
 
-  await application.close();
+  await closeApplication();
   await launchApplication();
   await open();
   await expect(imported()).toHaveCount(1);
@@ -282,7 +289,7 @@ test('shows real SQLite partial completions and supports Tab, Alt+Down, Esc, cop
 test('persists source/N settings, prevents an empty N selection and handles no active corpus', async () => {
   const mode = page.getByLabel('Predict from');
   await mode.selectOption('personal');
-  await expect(page.locator('#prediction-status')).toContainText('My Writing has no learned text');
+  await expect(page.locator('#prediction-status')).toContainText('My Writing has no active learned text');
   const editor = page.getByRole('textbox', { name: 'Document text' });
   await editor.fill('we write wo');
   await page.keyboard.press('End');
@@ -302,7 +309,7 @@ test('persists source/N settings, prevents an empty N selection and handles no a
   await editor.fill('wo');
   await page.keyboard.press('End');
   await expect(page.locator('.cm-ghost')).toHaveCount(0);
-  await application.close();
+  await closeApplication();
   await launchApplication();
   await expect(page.getByLabel('Predict from')).toHaveValue('combined');
   await expect(page.getByRole('checkbox', { name: 'N=1', exact: true })).toBeChecked();
@@ -353,7 +360,7 @@ test('keeps editing responsive and suggestions suspended across overlapping pref
   await expect(page.getByLabel('Predict from')).toBeEnabled();
   await expect(page.locator('.cm-ghost')).toHaveText('rds');
   // Restore real production IPC after the controlled delayed-handler fixture.
-  await application.close();
+  await closeApplication();
   await launchApplication();
 });
 
@@ -449,5 +456,159 @@ test('drops delayed IPC after newer edits, cursor movement, source/N changes and
   await release((await count()) - 1, 'work');
   await expect(ghost).toHaveText('k');
   await expect(page.locator('#prediction-status')).toContainText('1 active imported source');
+  expect(pageErrors).toEqual([]);
+});
+
+test('saves personal notes separately from consent, replaces learning, and preserves editing/history', async () => {
+  await closeApplication(); await launchApplication(); // Restore production handlers after delayed IPC fixtures.
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.getByLabel('Name', { exact: true }).fill('Personal first');
+  await editor.fill('private alpha'); await page.keyboard.press('End');
+  await expect(page.locator('#session-note')).toContainText('Unsaved changes');
+  expect(await page.evaluate(async () => (await window.typeNudge.listDocuments()))).toMatchObject({ ok: true, value: { learning: false, documents: [] } });
+  await page.keyboard.press(`${modifier}+s`);
+  await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await expect(page.getByLabel('Learn from my writing', { exact: true })).not.toBeChecked();
+  await expect(page.locator('#documents-list')).toContainText('Not learned');
+  await page.getByLabel('Learn from my writing', { exact: true }).check();
+  await expect(page.locator('#documents-status')).toContainText('future explicit saves');
+  await expect(page.locator('#documents-list')).toContainText('Not learned');
+  await page.keyboard.press('Escape'); await editor.focus();
+  await page.keyboard.press(`${modifier}+s`);
+  await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  const inspect = () => {
+    const db = new Database(path.join(userData, 'typenudge.sqlite3'), { readonly: true });
+    try { return db.prepare("SELECT next_token, frequency FROM ngrams g JOIN sources s ON s.id = g.source_id WHERE s.kind = 'personal' AND n = 1 ORDER BY next_token").all(); }
+    finally { db.close(); }
+  };
+  expect(inspect()).toEqual([{ next_token: 'alpha', frequency: 1 }, { next_token: 'private', frequency: 1 }]);
+  await page.keyboard.press(`${modifier}+s`);
+  await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  expect(inspect()).toEqual([{ next_token: 'alpha', frequency: 1 }, { next_token: 'private', frequency: 1 }]);
+  await editor.fill('private beta'); await page.keyboard.press('End'); await page.keyboard.press(`${modifier}+s`);
+  await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  expect(inspect()).toEqual([{ next_token: 'beta', frequency: 1 }, { next_token: 'private', frequency: 1 }]);
+  await page.getByLabel('Predict from').selectOption('personal');
+  await editor.fill('pri'); await page.keyboard.press('End'); await expect(page.locator('.cm-ghost')).toHaveText('vate');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Use Personal first for predictions', exact: true }).uncheck();
+  await expect(page.locator('#documents-status')).toContainText('source updated');
+  await page.keyboard.press('Escape'); await editor.focus(); await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  await expect(page.locator('#prediction-status')).toContainText('My Writing has no active');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Use Personal first for predictions', exact: true }).check();
+  await page.getByRole('button', { name: 'Remove learning Personal first', exact: true }).click();
+  await page.locator('#confirm-action').click();
+  await expect(page.locator('#documents-status')).toContainText('saved text kept');
+  await page.keyboard.press('Escape'); await editor.focus(); await expect(page.locator('.cm-ghost')).toHaveCount(0);
+  expect(inspect()).toEqual([]);
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(editor.locator('.cm-line')).toHaveText('pri');
+  await page.getByRole('button', { name: 'New', exact: true }).click(); await page.locator('#confirm-action').click();
+  await expect(page.locator('#session-note')).toContainText('New document');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Personal first', exact: true }).click();
+  await expect(editor.locator('.cm-line')).toHaveText('private beta');
+  await page.keyboard.press(`${modifier}+z`); // Undo history from another document was cleared.
+  await expect(editor.locator('.cm-line')).toHaveText('private beta');
+  await page.keyboard.press(`${modifier}+s`); await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByLabel('Learn from my writing', { exact: true }).uncheck();
+  await expect(page.locator('#documents-status')).toContainText('predictions paused');
+  await page.keyboard.press('Escape'); await editor.fill('private gamma'); await page.keyboard.press('End');
+  await page.keyboard.press(`${modifier}+s`); await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  expect(inspect()).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('resets personal learning without deleting notes/imports, reopens after restart, and guards window close', async () => {
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Personal second'); await editor.fill('resettable note');
+  await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByLabel('Learn from my writing', { exact: true }).check(); await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Save', exact: true }).click(); await expect(page.locator('#session-note')).toHaveText('Saved on this device.');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await expect(page.locator('#documents-list')).toContainText('2 learned words');
+  await page.getByRole('button', { name: 'Reset personal learned data', exact: true }).click();
+  await page.locator('#confirm-action').click();
+  await expect(page.locator('#documents-status')).toContainText('documents and imports kept');
+  await expect(page.getByLabel('Learn from my writing', { exact: true })).not.toBeChecked();
+  await expect(page.getByRole('list', { name: 'Saved documents' }).getByRole('listitem')).toHaveCount(2);
+  const db = new Database(path.join(userData, 'typenudge.sqlite3'), { readonly: true });
+  try {
+    expect(db.prepare("SELECT COUNT(*) AS count FROM ngrams g JOIN sources s ON s.id = g.source_id WHERE s.kind = 'personal'").get()).toEqual({ count: 0 });
+    expect((db.prepare("SELECT COUNT(*) AS count FROM ngrams g JOIN sources s ON s.id = g.source_id WHERE s.kind = 'imported'").get() as { count: number }).count).toBeGreaterThan(0);
+  } finally { db.close(); }
+  await page.screenshot({ path: test.info().outputPath('personal-documents.png') });
+  await closeApplication(); await launchApplication();
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await expect(page.getByLabel('Learn from my writing', { exact: true })).not.toBeChecked();
+  await expect(page.getByRole('list', { name: 'Saved documents' }).getByRole('listitem')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Open Personal second', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Document text' }).locator('.cm-line')).toHaveText('resettable note');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete Personal second', exact: true }).click(); await page.locator('#confirm-action').click();
+  await expect(page.getByRole('list', { name: 'Saved documents' }).getByRole('listitem')).toHaveCount(1);
+  await page.keyboard.press('Escape'); await page.getByRole('textbox', { name: 'Document text' }).fill('unsaved close guard');
+  await application.evaluate(({ dialog, BrowserWindow }) => {
+    (globalThis as unknown as { closePrompted: boolean }).closePrompted = false;
+    dialog.showMessageBoxSync = () => { (globalThis as unknown as { closePrompted: boolean }).closePrompted = true; return 1; };
+    BrowserWindow.getAllWindows()[0]!.close();
+  });
+  await expect.poll(() => application.evaluate(() => (globalThis as unknown as { closePrompted: boolean }).closePrompted)).toBe(true);
+  expect(application.windows()).toHaveLength(1);
+  await expect(page.locator('.cm-line')).toHaveText('unsaved close guard');
+  expect(pageErrors).toEqual([]);
+});
+
+test('preserves edits made during a pending save or open, and retains dirty text on save failure', async () => {
+  await closeApplication(); await launchApplication();
+  const stored = await page.evaluate(async () => {
+    const state = await window.typeNudge.listDocuments();
+    if (!state.ok || !state.value.documents[0]) throw new Error('Missing fixture');
+    const doc = await window.typeNudge.openDocument(state.value.documents[0].id);
+    if (!doc.ok) throw new Error(doc.error);
+    return doc.value;
+  });
+  await application.evaluate(({ ipcMain }, saved) => {
+    const fixture = globalThis as unknown as { finishSave: () => void; finishOpen: () => void };
+    ipcMain.removeHandler('documents:save');
+    ipcMain.handle('documents:save', (_event, input) => new Promise((resolve) => {
+      fixture.finishSave = () => resolve({ ok: true, value: { ...saved, name: input.name } });
+    }));
+    ipcMain.removeHandler('documents:open');
+    ipcMain.handle('documents:open', () => new Promise((resolve) => { fixture.finishOpen = () => resolve({ ok: true, value: saved }); }));
+  }, stored);
+  const editor = page.getByRole('textbox', { name: 'Document text' });
+  await page.getByLabel('Name', { exact: true }).fill('Snapshot'); await editor.fill('before save');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => application.evaluate(() => typeof (globalThis as unknown as { finishSave: unknown }).finishSave)).toBe('function');
+  await editor.fill('typed while saving');
+  await application.evaluate(() => (globalThis as unknown as { finishSave: () => void }).finishSave());
+  await expect(page.locator('#session-note')).toContainText('Unsaved changes');
+  await expect(editor.locator('.cm-line')).toHaveText('typed while saving');
+  await page.getByRole('button', { name: 'Documents', exact: true }).click();
+  await page.getByRole('button', { name: `Open ${stored.name}`, exact: true }).click();
+  await page.locator('#confirm-action').click();
+  await expect.poll(() => application.evaluate(() => typeof (globalThis as unknown as { finishOpen: unknown }).finishOpen)).toBe('function');
+  await page.keyboard.press('Escape'); await editor.fill('typed while opening');
+  await application.evaluate(() => (globalThis as unknown as { finishOpen: () => void }).finishOpen());
+  await expect(page.locator('#documents-status')).toContainText('Opening canceled because you edited');
+  await expect(editor.locator('.cm-line')).toHaveText('typed while opening');
+  await application.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('documents:save');
+    ipcMain.handle('documents:save', () => ({ ok: false, error: 'Fixture save failed' }));
+  });
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#documents-status')).toHaveText('Fixture save failed');
+  await expect(page.locator('#document-error')).toBeVisible();
+  await expect(page.locator('#document-error')).toHaveText('Fixture save failed');
+  await expect(page.locator('#session-note')).toContainText('Unsaved changes');
+  await expect(editor.locator('.cm-line')).toHaveText('typed while opening');
   expect(pageErrors).toEqual([]);
 });

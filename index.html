@@ -13,10 +13,13 @@
     <div class="app-shell">
       <header class="app-header">
         <div class="identity"><span class="app-mark" aria-hidden="true">T<span>n</span></span><h1 id="app-name">TypeNudge</h1></div>
-        <div class="header-actions"><button id="sources-button" type="button">Sources</button><button id="about-button" type="button" disabled>About</button></div>
+        <div class="header-actions"><button id="documents-button" type="button">Documents</button><button id="sources-button" type="button">Sources</button><button id="about-button" type="button" disabled>About</button></div>
       </header>
       <main>
         <div class="document-heading"><h2 id="document-title">Untitled</h2><span>Plain text</span></div>
+        <div class="document-actions"><label for="document-name">Name</label><input id="document-name" value="Untitled" maxlength="120" autocomplete="off">
+          <button id="new-document" type="button">New</button><button id="save-document" type="button">Save</button></div>
+        <p id="document-error" role="alert" hidden></p>
         <div class="prediction-controls" aria-label="Prediction settings">
           <label for="prediction-source">Predict from</label>
           <select id="prediction-source" disabled>
@@ -34,10 +37,24 @@
         <div id="editor" aria-describedby="session-note"></div>
       </main>
       <footer class="status-bar">
-        <span id="session-note">Session only · Closing the window discards this text.</span>
+        <span id="session-note" role="status">New document · Use Save to keep your text.</span>
         <button id="support-button" class="text-button" type="button" hidden>Support</button>
       </footer>
     </div>
+    <dialog id="documents-dialog" aria-labelledby="documents-title">
+      <h2 id="documents-title">Your documents</h2>
+      <p>Saved text stays on this device. Only Save (Ctrl/Cmd+S) persists your current document.</p>
+      <label class="learning-label"><input id="personal-learning" type="checkbox"> Learn from my writing</label>
+      <p class="source-note">Off by default. When on, Save replaces that document’s learned counts. Turning off pauses personal predictions; saving while off removes that document’s previous learned counts. Enabling does not index existing notes automatically.</p>
+      <button id="reset-learning" type="button">Reset personal learned data</button>
+      <p id="documents-status" role="status"></p><p id="documents-empty">No saved documents yet.</p>
+      <ul id="documents-list" aria-label="Saved documents"></ul>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Confirm action</h2><p id="confirm-message"></p>
+      <form method="dialog"><button value="cancel" autofocus>Keep editing</button> <button id="confirm-action" value="confirm">Confirm</button></form>
+    </dialog>
     <dialog id="sources-dialog" aria-labelledby="sources-title">
       <h2 id="sources-title">Text sources</h2>
       <p>Import UTF-8 TXT or Markdown files. Up to 10 files, 1 MiB each, 4 MiB per selection.</p>
