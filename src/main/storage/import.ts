@@ -15,7 +15,7 @@ function displayName(filename: string): string {
   return name.length <= 255 && !/[\p{Cc}\p{Cf}]/u.test(name) ? name : 'Selected file';
 }
 
-async function readSelectedFile(filename: string): Promise<{ text: string; originKey: string; name: string; bytes: number }> {
+async function readSelectedFile(filename: string): Promise<{ text: string; originKey: string; name: string; bytes: number; originalPath: string }> {
   const name = displayName(filename);
   if (!path.isAbsolute(filename) || path.normalize(filename) !== filename || filename.length > 4096 || filename.includes('\0') || name === 'Selected file') {
     throw new SourceError('The selected filename is not supported.');
@@ -29,7 +29,7 @@ async function readSelectedFile(filename: string): Promise<{ text: string; origi
   }
   const before = await lstat(filename);
   if (!before.isFile()) throw new SourceError('Select a regular text file.');
-  if (before.size > importLimits.fileBytes) throw new SourceError('Each file must be 1 MiB or smaller.');
+  if (before.size > importLimits.fileBytes) throw new SourceError(`Each file must be ${importLimits.fileBytes / 1024 ** 2} MiB or smaller.`);
   const canonical = await realpath(filename);
   const file = await open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
@@ -44,7 +44,7 @@ async function readSelectedFile(filename: string): Promise<{ text: string; origi
       if (!bytesRead) break;
       length += bytesRead;
     }
-    if (length > importLimits.fileBytes) throw new SourceError('Each file must be 1 MiB or smaller.');
+    if (length > importLimits.fileBytes) throw new SourceError(`Each file must be ${importLimits.fileBytes / 1024 ** 2} MiB or smaller.`);
     const after = await file.stat();
     if (after.size !== length || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) {
       throw new SourceError('The selected file changed while reading. Select it again.');
@@ -52,9 +52,11 @@ async function readSelectedFile(filename: string): Promise<{ text: string; origi
     let text: string;
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, length)); }
     catch { throw new SourceError('This file is not valid UTF-8. Save it as UTF-8 and try again.'); }
-    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(text)) throw new SourceError('This file contains unsupported binary/control characters.');
+    // Page/line controls and Unicode separators end contexts; other controls separate words.
+    text = text.replace(/[\v\f\u0085\p{Zl}\p{Zp}]/gu, '\n')
+      .replace(/(?![\t\n\r])\p{Cc}/gu, ' ');
     const identity = process.platform === 'win32' ? canonical.toLowerCase() : canonical;
-    return { text, bytes: length, name, originKey: createHash('sha256').update(identity).digest('hex') };
+    return { text, bytes: length, name, originalPath: canonical, originKey: createHash('sha256').update(identity).digest('hex') };
   } finally {
     await file.close();
   }
@@ -69,7 +71,7 @@ export async function importSelectedFiles(paths: string[], store: SourceStore): 
     try {
       const file = await readSelectedFile(filename);
       totalBytes += file.bytes;
-      if (totalBytes > importLimits.batchBytes) throw new SourceError('A selection can contain at most 4 MiB of text. Import fewer files.');
+      if (totalBytes > importLimits.batchBytes) throw new SourceError(`A selection can contain at most ${importLimits.batchBytes / 1024 ** 2} MiB of text. Import fewer files.`);
       files.push(file);
     } catch (error) {
       if (error instanceof SourceError && totalBytes > importLimits.batchBytes) throw error;
@@ -78,7 +80,7 @@ export async function importSelectedFiles(paths: string[], store: SourceStore): 
   }
   for (const file of files) {
     await setImmediate();
-    try { report[store.replace(file.originKey, file.name, file.text)]++; }
+    try { report[store.replace(file.originKey, file.name, file.text, file.originalPath)]++; }
     catch (error) { report.errors.push({ name: file.name, message: sourceErrorMessage(error) }); }
   }
   return report;

@@ -36,7 +36,7 @@ export class PersonalStore {
   save(input: SaveDocument): DocumentSummary {
     const value = validateSaveDocument(input);
     const bytes = Buffer.byteLength(value.text, 'utf8');
-    if (bytes > importLimits.fileBytes) throw new SourceError('Each document must be 1 MiB or smaller.');
+    if (bytes > importLimits.personalBytes) throw new SourceError(`Each document must be ${importLimits.personalBytes / 1024 ** 2} MiB or smaller.`);
     return this.db.transaction(() => {
       const old = value.id ? this.row(value.id) : undefined;
       if (old && old.revision !== value.revision) throw new SourceError('This document changed since it was opened. Reopen it before saving again.');

@@ -29,6 +29,12 @@ TND-001 through TND-005 implemented and verified.
 
 The Windows follow-up skips only the pinned Node-API SQLite module's unnecessary npm/Forge rebuild, makes existing test fixtures portable, and verifies real native Windows x64 packaging/SQLite/UI behavior. Dependency versions and application behavior are unchanged; platform results and initial test-harness failures are recorded separately in verification.
 
+The [larger-import follow-up](../verification.md#tnd-006-follow-up--larger-text-imports-2026-10-18) raises TXT/MD import limits to 250,000 words / 5 MiB per file and 10 MiB per selection, with independent 1 MiB personal saves, reproducible import/RSS measurements and packaged large-corpus checks. Import/index work remains synchronous in main; measurements state vocabulary-dependent costs and do not imply a worst-case typing or memory guarantee.
+
+The control-character follow-up accepts body controls during TXT/MD import: page/line controls and Unicode line/paragraph separators become LF; other C0/C1 controls except TAB/CR/LF become spaces. Unicode format marks/spaces/symbols remain accepted and excluded from word tokens. Original files stay unchanged; hashes/reindex use the cleaned local copy and byte limits still apply to the original selection. The normal Windows package includes this and the larger-import support.
+
+The unavailable-source follow-up adds main-only schema-3 original-path metadata, explicit file checks in Sources and conditional **Clear index** for unavailable originals with stored counts. Cleanup rechecks under the mutation lock; unknown legacy locations require explicit reimport for checks and retain ordinary Delete. Tests cover migration, privacy, restored-file refusal, scoped deletion/cache invalidation and the packaged UI.
+
 ## Out of scope
 
 No new prediction algorithms or unrelated UI redesign; no network-based AI, cloud sync, login system or additional preplanned releases.

@@ -72,7 +72,7 @@ test('starts one isolated window with restrictive CSP and a narrow bridge', asyn
     node: typeof (window as unknown as { require?: unknown }).require,
     process: typeof (window as unknown as { process?: unknown }).process,
     bridge: Object.keys(window.typeNudge),
-  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'importSources', 'reindexSource', 'deleteSource',
+  }))).toEqual({ node: 'undefined', process: 'undefined', bridge: ['getAppInfo', 'openLink', 'listSources', 'checkSourceFiles', 'importSources', 'reindexSource', 'deleteSource', 'clearUnavailableSource',
     'setSourceEnabled', 'predict', 'getPredictionSettings', 'setPredictionSettings', 'listDocuments', 'openDocument', 'saveDocument',
     'deleteDocument', 'setPersonalLearning', 'setDocumentEnabled', 'forgetDocument', 'resetPersonalLearning'] });
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
@@ -217,7 +217,7 @@ test('imports selected files, replaces/reindexes/deletes independently and persi
   await importFiles();
   await expect(status()).toContainText('at most 10 files');
   await expect(imported()).toHaveCount(2);
-  await page.getByRole('button', { name: 'Delete chosen-hu.txt', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear index chosen-hu.txt', exact: true }).click();
   await expect(imported()).toHaveCount(1);
   expect(inspect((db) => db.prepare('SELECT COUNT(*) AS count FROM ngrams WHERE source_id = ?').get(firstId))).toEqual({ count: 0 });
   expect(inspect((db) => db.prepare('SELECT COUNT(*) AS count FROM documents WHERE source_id = ?').get(firstId))).toEqual({ count: 0 });

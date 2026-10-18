@@ -11,7 +11,11 @@
 
 > **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg and Windows x64.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
-Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text.
+Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 5 MiB per file, 10 MiB per selection, 250,000 words per file, 128 characters per word, 100 stored sources and 32 MiB of stored text. File size and word count are independent: a 500 KiB file can contain more than the former 50,000-word allowance.
+
+**Sources → Check files** refreshes the availability of original imports; opening Sources also checks them. If an original is missing/unreadable and its stored index exists, **Clear index** removes that source, retained text and all N=1/2/3 counts from the database. It rechecks availability before clearing, and leaves other imports/personal notes intact. Readable files and imports without counts keep the normal **Delete** action. Old imports show unknown availability until explicitly reimported once: earlier databases retained only a path hash. No background folder scan or automatic deletion runs.
+
+Imported text tolerates control characters: form feed (FF), vertical tab, NEL and Unicode line/paragraph separators become line breaks; other C0/C1 controls (including NUL and DEL) become spaces. Normal tabs/CR/LF stay intact. Unicode format marks, unusual spaces and symbols do not block indexing and are not indexed as words. The selected file is never rewritten; hashes/reindexing use the cleaned local copy.
 
 Choose **Imported Texts**, **My Writing** or **Combined** above the editor and any nonempty set of N=1/2/3. **Tab** accepts the missing suffix, **Alt+Down** cycles up to three candidates, and **Esc** dismisses. Without a suggestion, Tab moves focus normally. **My Writing** uses enabled learned documents while personal learning is on; **Combined** also includes active imports. Settings and source activation persist across restarts.
 
@@ -131,6 +135,7 @@ The pinned `better-sqlite3` 13 uses shipped Node-API binaries. `package.json` de
 npm test              # IPC/security and real SQLite integration tests
 npm run typecheck
 npm run benchmark:prediction # reproducible synthetic SQLite prediction benchmark
+npm run benchmark:import # larger import/reimport/reindex timings, memory and prediction probes
 npm run package       # builds the current platform's app directory under out/
 npm run test:desktop  # tests the built main/preload/renderer; run package first
 ```
@@ -156,6 +161,8 @@ Remove-Item Env:TYPENUDGE_EXECUTABLE
 The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 24.04 to install the lockfile, typecheck and run unit/real SQLite tests. It skips the Electron binary download and does not run GUI, package or publish jobs. Actions are pinned to upstream commit IDs with read-only repository permissions. Its commands passed locally in a fresh temporary installation; **hosted GitHub Actions execution is Not run**. No separate lint configuration is present.
 
 `npm run benchmark:prediction` reports first indexing, retained-copy reindexing and LRU-cleared/warm prediction timings for two synthetic sources at 600 and 30,000 total tokens. Measurements include corpus sizes, CPU/runtime/SQLite versions and deterministic result checks. They exclude Electron IPC, rendering, file-picker/decoding and database-open time; they are local observations with a bounded vocabulary, not worst-case or end-to-end typing guarantees. Results are recorded in [verification](docs/releases/release-0.1-mvp/verification.md#tnd-006--2026-10-18).
+
+`npm run benchmark:import` uses a fresh process/database for each 500 KiB–5 MiB synthetic fixture, including a varied 500 KiB corpus and 125,000/250,000 unique-word stress cases. It checks complete stored text/counts, unchanged reimports, retained-copy reindexing and known trigram output, and reports whole-process peak RSS plus five LRU-cleared unigram/trigram probes. Vocabulary diversity changes cost substantially; the raw-byte limit fixture is mostly padding. Indexing still runs synchronously in main, so large imports/reindexes can delay main-process requests. Personal saved texts retain their separate 1 MiB limit. See [large-import verification](docs/releases/release-0.1-mvp/verification.md#tnd-006-follow-up--larger-text-imports-2026-10-18) for measured results and limitations.
 
 ## Development roadmap
 

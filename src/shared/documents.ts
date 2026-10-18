@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SourceResult } from './sources';
+import { importLimits, type SourceResult } from './sources';
 export const documentChannels = {
   list: 'documents:list', open: 'documents:open', save: 'documents:save', delete: 'documents:delete',
   learning: 'documents:learning', enable: 'documents:enable', forget: 'documents:forget', reset: 'documents:reset',
@@ -34,6 +34,6 @@ export function validateSaveDocument(input: unknown): SaveDocument {
   const id = value.id === null ? null : documentId(value.id);
   if (id === null ? value.revision !== null : !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) throw new Error('A saved document revision is required.');
   if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 240 || [...value.name].length > 120 || /[\p{C}]/u.test(value.name)) throw new Error('Use a document name of 1–120 characters.');
-  if (typeof value.text !== 'string' || value.text.length > 1024 * 1024 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value.text)) throw new Error('Use plain Unicode text, at most 1 MiB.');
+  if (typeof value.text !== 'string' || value.text.length > importLimits.personalBytes || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value.text)) throw new Error(`Use plain Unicode text, at most ${importLimits.personalBytes / 1024 ** 2} MiB.`);
   return { id, revision: value.revision as number | null, name: value.name.trim(), text: value.text };
 }

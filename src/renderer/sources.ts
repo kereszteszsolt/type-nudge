@@ -1,22 +1,24 @@
 // SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SourceResult } from '../shared/sources';
+import { importLimits, type SourceResult } from '../shared/sources';
 
 export function initializeSources(onBusy: (busy: boolean) => void): void {
   const dialog = document.getElementById('sources-dialog') as HTMLDialogElement;
   const open = document.getElementById('sources-button') as HTMLButtonElement;
   const importButton = document.getElementById('import-button') as HTMLButtonElement;
+  const refreshButton = document.getElementById('refresh-sources') as HTMLButtonElement;
   const list = document.getElementById('sources-list')!;
   const status = document.getElementById('sources-status')!;
   let busy = false;
+  document.getElementById('import-limits')!.textContent = `Import UTF-8 TXT or Markdown files. Up to ${importLimits.files} files, ${importLimits.fileBytes / 1024 ** 2} MiB each, ${importLimits.batchBytes / 1024 ** 2} MiB per selection, ${importLimits.tokens.toLocaleString('en-US')} words per file.`;
 
   function unwrap<T>(result: SourceResult<T>): T {
     if (!result.ok) throw new Error(result.error);
     return result.value;
   }
   async function refresh(): Promise<void> {
-    const sources = unwrap(await window.typeNudge.listSources());
+    const sources = unwrap(await window.typeNudge.checkSourceFiles());
     list.replaceChildren();
     document.getElementById('sources-empty')!.hidden = sources.length !== 0;
     for (const source of sources) {
@@ -26,7 +28,12 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
       name.textContent = source.name;
       const details = document.createElement('span');
       details.textContent = `${source.tokenCount.toLocaleString('en-US')} words · Revision ${source.revision}`;
-      description.append(name, details);
+      const availability = document.createElement('span');
+      availability.textContent = {
+        available: 'Original file available', missing: 'Original file missing',
+        unavailable: 'Original file unavailable', unknown: 'File availability unknown · Reimport to remember its location, or check again',
+      }[source.fileStatus];
+      description.append(name, details, availability);
       const actions = document.createElement('div');
       actions.className = 'source-actions';
       const label = document.createElement('label');
@@ -44,14 +51,19 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
       });
       label.append(enabled, 'Use');
       actions.append(label);
+      const canClear = source.hasIndex && (source.fileStatus === 'missing' || source.fileStatus === 'unavailable');
       for (const [label, operation] of [
         ['Reindex', async () => { unwrap(await window.typeNudge.reindexSource(source.id)); return `${source.name} reindexed from its local copy.`; }],
-        ['Delete', async () => { unwrap(await window.typeNudge.deleteSource(source.id)); return `${source.name} deleted from local sources.`; }],
+        [canClear ? 'Clear index' : 'Delete', async () => {
+          unwrap(await (canClear ? window.typeNudge.clearUnavailableSource(source.id) : window.typeNudge.deleteSource(source.id)));
+          return `${source.name} and its stored text/index deleted from local sources.`;
+        }],
       ] as const) {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = label;
         button.setAttribute('aria-label', `${label} ${source.name}`);
+        if (canClear && label === 'Clear index') button.title = 'Remove this source, its stored text and all indexed word counts from this device.';
         button.disabled = busy;
         button.addEventListener('click', () => { void run(operation); });
         actions.append(button);
@@ -63,7 +75,7 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
   function setBusy(value: boolean): void {
     busy = value;
     dialog.setAttribute('aria-busy', String(value));
-    for (const control of dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement>('#import-button, .source-actions button, .source-actions input')) control.disabled = value;
+    for (const control of dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement>('#import-button, #refresh-sources, .source-actions button, .source-actions input')) control.disabled = value;
     importButton.textContent = value ? 'Working…' : 'Import TXT / MD';
     onBusy(value);
   }
@@ -76,6 +88,7 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
       await refresh();
       status.textContent = message;
     } catch (error) {
+      try { await refresh(); } catch { /* Preserve the original operation error. */ }
       status.textContent = error instanceof Error ? error.message : 'Could not update sources. Please try again.';
     } finally { setBusy(false); }
   }
@@ -83,6 +96,7 @@ export function initializeSources(onBusy: (busy: boolean) => void): void {
     dialog.showModal();
     void run(async () => '');
   });
+  refreshButton.addEventListener('click', () => { void run(async () => 'File availability checked.'); });
   importButton.addEventListener('click', () => {
     void run(async () => {
       const report = unwrap(await window.typeNudge.importSources());

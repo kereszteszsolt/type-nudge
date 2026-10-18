@@ -3,19 +3,22 @@
 
 export const sourceChannels = {
   list: 'sources:list',
+  checkFiles: 'sources:check-files',
   import: 'sources:import',
   reindex: 'sources:reindex',
   delete: 'sources:delete',
+  clearUnavailable: 'sources:clear-unavailable',
   enable: 'sources:enable',
 } as const;
 
 export const importLimits = {
   files: 10,
-  fileBytes: 1024 * 1024,
-  batchBytes: 4 * 1024 * 1024,
+  fileBytes: 5 * 1024 * 1024,
+  batchBytes: 10 * 1024 * 1024,
+  personalBytes: 1024 * 1024,
   storedBytes: 32 * 1024 * 1024,
   sources: 100,
-  tokens: 50_000,
+  tokens: 250_000,
   wordCodePoints: 128,
 } as const;
 
@@ -29,6 +32,13 @@ export interface SourceSummary {
   updatedAt: string;
 }
 
+export type SourceFileStatus = 'available' | 'missing' | 'unavailable' | 'unknown';
+
+export interface SourceFileSummary extends SourceSummary {
+  fileStatus: SourceFileStatus;
+  hasIndex: boolean;
+}
+
 export interface ImportReport {
   imported: number;
   unchanged: number;
@@ -40,8 +50,10 @@ export type SourceResult<T> = { ok: true; value: T } | { ok: false; error: strin
 
 export interface SourcesBridge {
   listSources(): Promise<SourceResult<SourceSummary[]>>;
+  checkSourceFiles(): Promise<SourceResult<SourceFileSummary[]>>;
   importSources(): Promise<SourceResult<ImportReport>>;
   reindexSource(id: string): Promise<SourceResult<SourceSummary>>;
   deleteSource(id: string): Promise<SourceResult<void>>;
+  clearUnavailableSource(id: string): Promise<SourceResult<void>>;
   setSourceEnabled(id: string, enabled: boolean): Promise<SourceResult<SourceSummary>>;
 }

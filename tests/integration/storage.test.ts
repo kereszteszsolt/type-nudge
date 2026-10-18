@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtemp, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { SourceStore } from '../../src/main/storage/store';
@@ -90,12 +90,12 @@ describe('real SQLite source storage', () => {
   });
 
   it('migrates a persistent DB with consent off, all N sizes, constraints and lookup indexes', () => {
-    expect(inspection.pragma('user_version', { simple: true })).toBe(2);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(3);
     expect(inspection.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'personalLearning'").get()).toEqual({ value: 'false' });
     expect(inspection.prepare("SELECT value FROM settings WHERE key = 'enabledN'").get()).toEqual({ value: '[1,2,3]' });
     expect(inspection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all())
-      .toEqual(['documents', 'ngrams', 'personal_documents', 'settings', 'sources'].map((name) => ({ name })));
+      .toEqual(['documents', 'imported_files', 'ngrams', 'personal_documents', 'settings', 'sources'].map((name) => ({ name })));
     expect(() => inspection.prepare('INSERT INTO ngrams VALUES (?, 4, ?, ?, ?, 1)').run('unknown', '', 'a', 'a')).toThrow();
     expect(inspection.pragma('integrity_check', { simple: true })).toBe('ok');
   });
@@ -215,9 +215,9 @@ describe('real SQLite source storage', () => {
   });
 
   it('does not modify or downgrade a newer schema', () => {
-    inspection.pragma('user_version = 3');
+    inspection.pragma('user_version = 4');
     expect(() => new SourceStore(path.join(directory, 'sources.sqlite3'))).toThrow('newer version');
-    expect(inspection.pragma('user_version', { simple: true })).toBe(3);
+    expect(inspection.pragma('user_version', { simple: true })).toBe(4);
   });
 
   it('enforces source count and cumulative stored-text limits without damaging existing sources', () => {
@@ -235,7 +235,6 @@ describe('bounded explicit file import', () => {
   it.each([
     ['invalid.txt', Buffer.from([0xc3, 0x28]), 'UTF-8'],
     ['utf16.md', Buffer.from([0xff, 0xfe, 0x61, 0x00]), 'UTF-8'],
-    ['binary.txt', Buffer.from('hello\0world'), 'control'],
     ['file.html', Buffer.from('<script>alert(1)</script>'), '.txt or .md'],
   ])('rejects malformed or unsupported %s and allows a later valid import', async (name, bytes, reason) => {
     const report = await importSelectedFiles([await file(name, bytes)], store);
@@ -249,6 +248,65 @@ describe('bounded explicit file import', () => {
     expect(await importSelectedFiles([await file('bom.md', '\ufeff' + body), await file('empty.txt', '')], store)).toMatchObject({ imported: 2, errors: [] });
     expect(inspection.prepare('SELECT body_text FROM documents WHERE byte_length > 0').get()).toEqual({ body_text: body });
     expect(store.list().find((source) => source.name === 'empty.txt')?.tokenCount).toBe(0);
+  });
+
+  it.each([
+    ['word separators', 'árvíz\0tükör\u0007gép\u007fpróba\u0080szöveg\u009fvége', 'árvíz tükör gép próba szöveg vége'],
+    ['page and line controls', 'one two\fone two\vone two\u0085one two', 'one two\none two\none two\none two'],
+    ['Unicode line and paragraph separators', 'one two\u2028one two\u2029one two', 'one two\none two\none two'],
+    ['ordinary whitespace', 'árvíz\t\ttükör\r\nkövetkező\n\nsor', 'árvíz\t\ttükör\r\nkövetkező\n\nsor'],
+  ])('cleans %s without changing the selected file or inflating reimports', async (_name, original, cleaned) => {
+    const selected = await file('controls.txt', original);
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 1, errors: [] });
+    expect(inspection.prepare('SELECT body_text AS text, byte_length AS bytes FROM documents').get())
+      .toEqual({ text: cleaned, bytes: Buffer.byteLength(cleaned) });
+    expect(await readFile(selected, 'utf8')).toBe(original);
+    const source = store.list()[0]!;
+    const originalCounts = [1, 2, 3].map((n) => grams(source.id, n));
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ unchanged: 1, errors: [] });
+    await writeFile(selected, cleaned);
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ unchanged: 1, errors: [] });
+    await rm(selected);
+    expect(store.reindex(source.id)).toMatchObject({ contentHash: source.contentHash, revision: 2 });
+    expect([1, 2, 3].map((n) => grams(source.id, n))).toEqual(originalCounts);
+  });
+
+  it('cleans all C0/C1 controls while keeping page boundaries out of N-grams', async () => {
+    const codes = [...Array.from({ length: 32 }, (_, i) => i), ...Array.from({ length: 33 }, (_, i) => i + 127)]
+      .filter((code) => ![9, 10, 13].includes(code));
+    const original = codes.map((code) => `left${String.fromCodePoint(code)}right`).join('\n');
+    const cleaned = codes.map((code) => [11, 12, 133].includes(code) ? 'left\nright' : 'left right').join('\n');
+    expect(await importSelectedFiles([await file('all-controls.txt', original)], store)).toMatchObject({ imported: 1, errors: [] });
+    const source = store.list()[0]!;
+    expect(source.tokenCount).toBe(codes.length * 2);
+    expect(inspection.prepare('SELECT body_text AS text FROM documents').get()).toEqual({ text: cleaned });
+    expect(inspection.prepare('SELECT frequency FROM ngrams WHERE n = 2').all()).toEqual([{ frequency: codes.length - 3 }]);
+    expect(grams(source.id, 3)).toEqual([]);
+  });
+
+  it('accepts Unicode format marks, unusual spaces and symbols without indexing them as words', async () => {
+    const separators = ['\u00ad', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\u202a', '\u202b', '\u202c',
+      '\u202d', '\u202e', '\u2060', '\u2066', '\u2067', '\u2068', '\u2069', '\ufeff', '\u00a0', '\u1680',
+      '\u2000', '\u2009', '\u202f', '\u205f', '\u3000', '🙂', '★'];
+    const text = separators.map((separator) => `árvíz${separator}tükör`).join('\n');
+    const selected = await file('unicode-marks.md', text);
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 1, errors: [] });
+    const source = store.list()[0]!;
+    expect(source.tokenCount).toBe(separators.length * 2);
+    expect(grams(source.id, 1)).toEqual([
+      { context_key: '', next_token: 'tükör', display_token: 'tükör', frequency: separators.length },
+      { context_key: '', next_token: 'árvíz', display_token: 'árvíz', frequency: separators.length },
+    ]);
+    expect(inspection.prepare('SELECT body_text AS text FROM documents').get()).toEqual({ text });
+    expect(await readFile(selected, 'utf8')).toBe(text);
+  });
+
+  it('enforces the raw selection budget even when cleanup shrinks stored UTF-8 text', async () => {
+    const selected: string[] = [];
+    const controls = '\u009f'.repeat(Math.floor(importLimits.batchBytes / 5 / 2) + 1);
+    for (let i = 0; i < 5; i++) selected.push(await file(`raw-controls-${i}.txt`, controls));
+    await expect(importSelectedFiles(selected, store)).rejects.toThrow('10 MiB');
+    expect(store.list()).toEqual([]);
   });
 
   it('returns per-file recoverable errors while retaining valid selected files', async () => {
@@ -280,15 +338,15 @@ describe('bounded explicit file import', () => {
 
   it('rejects an oversized file before indexing', async () => {
     const report = await importSelectedFiles([await file('large.txt', Buffer.alloc(importLimits.fileBytes + 1, 32))], store);
-    expect(report.errors[0]?.message).toContain('1 MiB');
+    expect(report.errors[0]?.message).toContain('5 MiB');
     expect(store.list()).toEqual([]);
   });
 
   it('rejects a batch above count or cumulative bytes before any contribution is stored', async () => {
     await expect(importSelectedFiles(Array(11).fill(path.join(directory, 'unused.txt')), store)).rejects.toThrow('10 files');
     const selected = [];
-    for (let i = 0; i < 5; i++) selected.push(await file(`batch-${i}.txt`, Buffer.alloc(900_000, 32)));
-    await expect(importSelectedFiles(selected, store)).rejects.toThrow('4 MiB');
+    for (let i = 0; i < 5; i++) selected.push(await file(`batch-${i}.txt`, Buffer.alloc(Math.floor(importLimits.batchBytes / 5) + 1, 32)));
+    await expect(importSelectedFiles(selected, store)).rejects.toThrow('10 MiB');
     expect(store.list()).toEqual([]);
   });
 
@@ -297,9 +355,37 @@ describe('bounded explicit file import', () => {
     await importSelectedFiles([selected], store);
     const original = store.list();
     await writeFile(selected, 'word '.repeat(importLimits.tokens + 1));
-    expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('50,000');
+    expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('250,000');
     await writeFile(selected, 'a'.repeat(importLimits.wordCodePoints + 1));
     expect((await importSelectedFiles([selected], store)).errors[0]?.message).toContain('128-character');
     expect(store.list()).toEqual(original);
+  });
+
+  it.each([102_400, 250_000])('imports %i words completely and keeps reimport/reindex counts stable', async (tokens) => {
+    const body = 'word '.repeat(tokens);
+    const selected = await file('large-valid.txt', body);
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 1, errors: [] });
+    const source = store.list()[0]!;
+    expect(source.tokenCount).toBe(tokens);
+    expect(inspection.prepare('SELECT body_text AS text, byte_length AS bytes FROM documents WHERE source_id = ?').get(source.id))
+      .toEqual({ text: body, bytes: tokens * 5 });
+    const expected = [1, 2, 3].map((n) => ({ n, frequency: tokens - n + 1 }));
+    const frequencies = () => inspection.prepare('SELECT n, frequency FROM ngrams WHERE source_id = ? ORDER BY n').all(source.id);
+    expect(frequencies()).toEqual(expected);
+    expect(await importSelectedFiles([selected], store)).toMatchObject({ imported: 0, unchanged: 1, errors: [] });
+    expect(store.list()).toEqual([source]);
+    await rm(selected);
+    expect(store.reindex(source.id)).toMatchObject({ revision: 2, tokenCount: tokens, contentHash: source.contentHash });
+    expect(frequencies()).toEqual(expected);
+  });
+
+  it('accepts exact 5 MiB files and a 10 MiB selection without truncation', async () => {
+    const header = 'we write words.\n';
+    const body = header + ' '.repeat(importLimits.fileBytes - Buffer.byteLength(header));
+    const selected = [await file('five-a.txt', body), await file('five-b.md', body)];
+    expect(await importSelectedFiles(selected, store)).toMatchObject({ imported: 2, errors: [] });
+    expect(store.list().map((source) => source.tokenCount)).toEqual([3, 3]);
+    expect(inspection.prepare('SELECT SUM(byte_length) AS bytes FROM documents').get()).toEqual({ bytes: importLimits.batchBytes });
+    expect(inspection.prepare('SELECT body_text AS text FROM documents LIMIT 1').get()).toEqual({ text: body });
   });
 });

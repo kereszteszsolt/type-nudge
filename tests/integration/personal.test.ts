@@ -49,6 +49,18 @@ it('replaces learned N=1/2/3 contributions and makes unchanged saves idempotent'
   expect(counts().map((row) => (row as { next_token: string }).next_token)).not.toContain('words');
   expect(db.prepare('SELECT frequency FROM ngrams WHERE n = 3').all()).toEqual([{ frequency: 1 }]);
 });
+it('learns a 500 KiB note above the old word limit without inflating repeated saves', () => {
+  const text = 'word '.repeat(102_400);
+  store.personal.setLearning(true);
+  const note = save(text);
+  expect(note).toMatchObject({ tokenCount: 102_400, learned: true, revision: 1 });
+  expect(store.personal.open(note.id).text).toBe(text);
+  const frequencies = () => db.prepare('SELECT n, frequency FROM ngrams ORDER BY n').all();
+  const expected = [1, 2, 3].map((n) => ({ n, frequency: 102_400 - n + 1 }));
+  expect(frequencies()).toEqual(expected);
+  expect(save(text, note)).toEqual(note);
+  expect(frequencies()).toEqual(expected);
+});
 it('pauses learning/personal predictions and removes old contributions on a save while off', () => {
   store.personal.setLearning(true); const note = save('private private'); const learned = counts();
   expect(predict().candidates[0]?.word).toBe('private');
@@ -140,9 +152,9 @@ it('bounds combined stored UTF-8 bytes across imports and personal notes', () =>
 });
 it('migrates schema 1 without altering imported text, preferences or N-gram counts', () => {
   store.replace('import', 'import.txt', 'original corpus'); const sources = store.list(), original = counts('imported');
-  db.exec('DROP TABLE personal_documents; PRAGMA user_version = 1;');
+  db.exec('DROP TABLE imported_files; DROP TABLE personal_documents; PRAGMA user_version = 1;');
   store.close(); store = new SourceStore(filename);
-  expect(db.pragma('user_version', { simple: true })).toBe(2);
+  expect(db.pragma('user_version', { simple: true })).toBe(3);
   expect(store.list()).toEqual(sources); expect(counts('imported')).toEqual(original);
   expect(store.personal.list()).toEqual({ learning: false, documents: [] });
 });

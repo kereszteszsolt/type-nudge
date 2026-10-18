@@ -27,7 +27,7 @@ export class SourceStore {
     this.db = new Database(filename);
     try {
       const version = this.db.pragma('user_version', { simple: true }) as number;
-      if (version > 2) throw new SourceError('This database needs a newer version of TypeNudge.');
+      if (version > 3) throw new SourceError('This database needs a newer version of TypeNudge.');
       this.db.pragma('foreign_keys = ON');
       this.db.pragma('journal_mode = WAL');
       this.db.pragma('busy_timeout = 5000');
@@ -77,6 +77,12 @@ export class SourceStore {
           learned_hash TEXT CHECK(learned_hash IS NULL OR length(learned_hash) = 64)
         ); PRAGMA user_version = 2;`);
       })();
+      if (version < 3) this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE imported_files (
+          source_id TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+          original_path TEXT NOT NULL
+        ); PRAGMA user_version = 3;`);
+      })();
       this.personal = new PersonalStore(this.db);
     } catch (error) {
       this.db.close();
@@ -88,6 +94,13 @@ export class SourceStore {
     const rows = this.db.prepare(`SELECT ${summaryColumns} FROM sources WHERE kind = 'imported' ORDER BY created_at, id LIMIT ?`)
       .all(importLimits.sources) as SourceRow[];
     return rows.map((row) => ({ ...row, enabled: Boolean(row.enabled) }));
+  }
+
+  originalFile(id: string): { path: string | null; hasIndex: boolean } {
+    this.summary(id);
+    const file = this.db.prepare(`SELECT original_path AS path FROM imported_files WHERE source_id = ?`).get(id) as { path: string } | undefined;
+    const indexed = this.db.prepare('SELECT 1 FROM ngrams WHERE source_id = ? LIMIT 1').get(id);
+    return { path: file?.path ?? null, hasIndex: Boolean(indexed) };
   }
 
   predictionRepository(): PredictionRepository {
@@ -132,15 +145,22 @@ export class SourceStore {
     return { ...row, enabled: Boolean(row.enabled) };
   }
 
-  replace(originKey: string, name: string, text: string): 'imported' | 'unchanged' {
+  replace(originKey: string, name: string, text: string, originalPath?: string): 'imported' | 'unchanged' {
     const bytes = Buffer.byteLength(text, 'utf8');
-    if (bytes > importLimits.fileBytes) throw new SourceError('Each file must be 1 MiB or smaller.');
+    if (bytes > importLimits.fileBytes) throw new SourceError(`Each file must be ${importLimits.fileBytes / 1024 ** 2} MiB or smaller.`);
     const hash = createHash('sha256').update(text, 'utf8').digest('hex');
     const indexed = countNgrams(text);
     return this.db.transaction(() => {
       const old = this.db.prepare("SELECT id, content_hash FROM sources WHERE origin_key = ? AND kind = 'imported'")
         .get(originKey) as { id: string; content_hash: string } | undefined;
-      if (old?.content_hash === hash) return 'unchanged' as const;
+      const rememberFile = (id: string): void => {
+        if (originalPath !== undefined) this.db.prepare(`INSERT INTO imported_files VALUES (?, ?)
+          ON CONFLICT(source_id) DO UPDATE SET original_path = excluded.original_path`).run(id, originalPath);
+      };
+      if (old?.content_hash === hash) {
+        rememberFile(old.id);
+        return 'unchanged' as const;
+      }
       const total = this.db.prepare(`SELECT (SELECT COUNT(*) FROM sources) AS count,
         (SELECT COALESCE(SUM(byte_length), 0) FROM documents) +
         (SELECT COALESCE(SUM(byte_length), 0) FROM personal_documents) AS bytes`)
@@ -159,6 +179,7 @@ export class SourceStore {
           VALUES (?, 'imported', ?, ?, 1, ?, ?, ?, ?)`).run(id, originKey, name, hash, indexed.tokenCount, now, now);
         this.db.prepare('INSERT INTO documents VALUES (?, ?, ?, ?)').run(randomUUID(), id, text, bytes);
       }
+      rememberFile(id);
       this.writeCounts(id, indexed.counts);
       return 'imported' as const;
     })();

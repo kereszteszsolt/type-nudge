@@ -7,6 +7,7 @@ import { assertTrustedSender } from './ipc-sender';
 import { SourceError, sourceErrorMessage } from './storage/errors';
 import { importSelectedFiles } from './storage/import';
 import type { SourceStore } from './storage/store';
+import { clearUnavailableSource, listSourceFiles } from './storage/source-files';
 
 export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry: string, getStore: () => SourceStore): void {
   let busy = false;
@@ -20,11 +21,13 @@ export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry:
     try { return await operation(); } finally { busy = false; }
   }
 
-  ipcMain.handle(sourceChannels.list, (event, ...args: unknown[]) => {
-    assertTrustedSender(event, getWindow(), entry);
-    if (args.length !== 0) throw new Error('List sources takes no arguments.');
-    return result(() => getStore().list());
-  });
+  for (const channel of [sourceChannels.list, sourceChannels.checkFiles]) {
+    ipcMain.handle(channel, (event, ...args: unknown[]) => {
+      assertTrustedSender(event, getWindow(), entry);
+      if (args.length !== 0) throw new Error('List/check sources takes no arguments.');
+      return result(() => channel === sourceChannels.list ? getStore().list() : listSourceFiles(getStore()));
+    });
+  }
   ipcMain.handle(sourceChannels.import, (event, ...args: unknown[]) => {
     const window = getWindow();
     assertTrustedSender(event, window, entry);
@@ -44,6 +47,7 @@ export function registerSourcesIpc(getWindow: () => BrowserWindow | null, entry:
   for (const [channel, action] of [
     [sourceChannels.reindex, (store: SourceStore, id: string) => store.reindex(id)],
     [sourceChannels.delete, (store: SourceStore, id: string) => store.delete(id)],
+    [sourceChannels.clearUnavailable, (store: SourceStore, id: string) => clearUnavailableSource(store, id)],
   ] as const) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
       assertTrustedSender(event, getWindow(), entry);

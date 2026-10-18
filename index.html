@@ -57,9 +57,10 @@
     </dialog>
     <dialog id="sources-dialog" aria-labelledby="sources-title">
       <h2 id="sources-title">Text sources</h2>
-      <p>Import UTF-8 TXT or Markdown files. Up to 10 files, 1 MiB each, 4 MiB per selection.</p>
+      <p id="import-limits">Import UTF-8 TXT or Markdown files.</p>
       <p class="source-note">Local copies stay on this device. Choose which files contribute to predictions. Reimport a changed file to replace its counts, or reindex its stored copy.</p>
       <button id="import-button" type="button">Import TXT / MD</button>
+      <button id="refresh-sources" type="button">Check files</button>
       <p id="sources-status" role="status" aria-live="polite"></p>
       <p id="sources-empty">No sources yet. Choose text files to build your local index.</p>
       <ul id="sources-list" aria-label="Imported sources"></ul>

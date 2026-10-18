@@ -475,3 +475,147 @@ An initial Windows archive-audit probe used POSIX separators and failed to locat
 The tested Windows application directory was moved intact to ignored `out/TypeNudge-win32-x64/`; its `type-nudge.exe` can be launched directly, with the full directory retained. A fresh native Windows launch from this final location passed: editor visible, `listSources()` returned `{ ok: true, value: [] }`, and a real `typenudge.sqlite3` existed in its own temporary profile. The initial ad-hoc assertion expected an unwrapped array; correcting it to the actual IPC reply shape passed without changing the app. The probe closed the app and removed its profile. Executable SHA-256: `cea8ef80a311884c854d01470725f6c208b00180eea6c3f0e88fe699821afe83`.
 
 Final screenshots are under ignored `test-results/windows-native-followup/` and `test-results/linux-native-followup/`. Temporary verification checkouts/caches were removed afterwards; the final config/package/test files were byte-compared against both fixtures before cleanup. No installer, signature or publication was created, and no push was performed. Hosted CI, Windows development-server mode, macOS, native Linux outside WSLg, other architectures, physical IME and actual support-browser dispatch remain **Not run** in this follow-up. No performance benchmark was repeated.
+
+## TND-006 follow-up — Larger text imports, 2026-10-18
+
+Starting point: clean `dev_r0.1` at `8b09b0a`. The user reported a roughly 500 KB file as too long and requested larger-file testing after discussion of raising the limits. The original file/exact error was not supplied; all measurements below use synthetic data and do not claim validation of that original file. No separate commit approval has been received for this follow-up.
+
+### Reproduction and resulting bounds
+
+An initial Windows probe using unchanged application code reproduced `A file can contain at most 50,000 words.` with a 512,000-byte file containing 102,400 repetitions of `word`. No source/count was written. An exploratory process-local override confirmed that the same bytes can be imported with larger bounds; the production source was changed only after larger varied/unique-word probes completed.
+
+Current TXT/MD import bounds are **250,000 words and 5 MiB per file**, **10 MiB per selection**, with the existing 10-file, 100-source/document, 32 MiB total raw-text and 128-code-point individual-word limits retained. Personal saves have an explicit independent `personalBytes` limit of **1 MiB**, used by both validation and storage; their existing save-size behavior is preserved. The higher token allowance also applies to opt-in personal learning within that save-size bound. Error messages derive their MiB values from the shared limits. No schema/dependency/IPC expansion, truncation or background-worker architecture change was introduced.
+
+### Commands and environments
+
+Native Windows x64, Windows_NT `10.0.26100`, AMD Ryzen 9 3900X / 24 logical CPUs / 63.93 GiB physical memory visible to Windows, Node 24.18.0 / npm 11.16.0, Electron 44.9.0, existing `better-sqlite3` 13.0.3 / SQLite 3.53.4. Windows `node.exe` and `npm-cli.js` were invoked through WSL interop. The focused root check ran typecheck, the storage/personal/prediction integration suites (63 checks before the additional personal case), and the new benchmark. Final full checks used fresh isolated archives with all changed/new source, script and test files overlaid; no existing dependency installation or personal app profile was replaced.
+
+Equivalent native PowerShell commands:
+
+```powershell
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run benchmark:import
+npm.cmd run package
+$env:TYPENUDGE_EXECUTABLE = "$PWD\out\TypeNudge-win32-x64\type-nudge.exe"
+npm.cmd run test:desktop
+Remove-Item Env:TYPENUDGE_EXECUTABLE
+```
+
+Windows fresh installation used a fixture-local npm cache and `--no-fund`. Linux regression used the earlier Ubuntu 26.04 x64 / WSL2/WSLg environment, Node 24.18.0 / npm 11.16.0, `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --offline --cache /tmp/type-nudge-npm-cache --no-fund`, typecheck, full tests and package. Its actual packaged executable suite ran with `TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge"` and the earlier GUI-library `LD_LIBRARY_PATH`. GUI suites were run sequentially across OSes to avoid sharing the clipboard concurrently.
+
+### Import/index measurements on native Windows
+
+`npm run benchmark:import` bundles `scripts/import-benchmark.ts`, then starts a fresh Node process and temporary SQLite DB for each fixture. Each operation is timed once: real selected-file import, unchanged reimport, retained-copy reindex. Import includes file/parent checks, reading, UTF-8 decoding, tokenization, hashing and committed SQLite writes. Corpus generation, file creation, schema creation and assertions are outside the timers. Whole-process peak RSS includes setup, fixture/assertion allocations and all operations, and excludes Electron renderer/GPU processes.
+
+| Fixture | UTF-8 bytes / words | Import (ms) | Unchanged reimport (ms) | Reindex (ms) | Peak RSS (MiB) | DB bytes after close |
+| --- | --- | --- | --- | --- | --- | --- |
+| Repeated short word, 500 KiB | 512,000 / 102,400 | 171.15 | 162.13 | 161.52 | 64.73 | 573,440 |
+| Seeded varied Unicode words, 500 KiB | 512,000 / 66,705 | 1,607.89 | 194.83 | 1,894.23 | 233.61 | 22,614,016 |
+| Unique-word stress, 125k | 1,499,979 / 125,000 | 2,855.54 | 415.00 | 3,971.43 | 465.96 | 66,322,432 |
+| Unique-word stress, 250k | 2,999,979 / 250,000 | 6,073.25 | 848.24 | 8,495.86 | 552.95 | 132,521,984 |
+| Exact 5 MiB byte bound, mostly spaces | 5,242,880 / 3 | 96.34 | 30.14 | 22.58 | 108.15 | 5,308,416 |
+
+The varied fixture uses a fixed seed (42) and a 4,096-word synthetic Unicode vocabulary; it has 4,099 unigrams, 66,565 bigrams and 66,701 trigrams including a known three-word header. The unique 250k fixture has 749,994 N-gram rows. All cases assert full stored body/byte length/hash, exact total N frequencies, unchanged reimport metadata/counts, retained-copy reindex revision +1, unchanged input bytes and known trigram output. No corpus is loaded into the application renderer by the implementation.
+
+Five LRU-cleared prediction probes per order are also recorded; SQLite/OS pages are not flushed. Median / maximum milliseconds:
+
+| Fixture | N=1 | N=3 |
+| --- | --- | --- |
+| Repeated 500 KiB | 0.10 / 1.61 | 0.12 / 1.60 |
+| Varied 500 KiB | 2.37 / 4.66 | 0.12 / 1.59 |
+| Unique 125k | 80.53 / 101.80 | 0.15 / 1.91 |
+| Unique 250k | 192.36 / 195.27 | 0.15 / 1.91 |
+| 5 MiB byte bound | 0.10 / 1.57 | 0.16 / 1.61 |
+
+These are single-operation observations/five prediction samples on one machine, not stable percentiles, quality estimates or worst-case guarantees. The 5 MiB fixture is a byte-boundary check, not representative prose. The earlier exploratory single-import 250k probe peaked near 391 MiB; the committed benchmark's 552.95 MiB peak covers reimport/reindex and assertions too. The 32 MiB budget caps raw source text rather than derived SQLite/index/WAL size; the unique 250k test produced a 126.38 MiB DB from roughly 3 MB of input.
+
+### Final automated and packaged results
+
+- Clean Windows and Linux installations: 183 packages added / 184 audited on each; 0 vulnerabilities reported at that time. Dependency versions and lockfile unchanged.
+- Typecheck and full unit/SQLite suites: **200/200 in 11 files on each OS**. Exact 250,000-word, 5 MiB/file and 10 MiB/selection bounds are accepted; over-limit files/batches/words and oversized individual words are rejected without altering previous contributions. A 500 KiB opt-in personal save preserves exact frequencies across re-save within its unchanged 1 MiB save budget.
+- Actual native Windows x64 package: **14/14 desktop checks, 31.9 seconds**. The new large-import test passed in 19.4 seconds.
+- Actual Linux x64/WSLg package: **14/14 desktop checks, 25.1 seconds**. The new large-import test passed in 13.1 seconds.
+- The new packaged test selects three real synthetic files together: 512,000 bytes / 102,400 words; 2,999,979 bytes / 250,000 unique words; 5,242,880 bytes / 3 words. It checks complete body/hash/byte/count persistence, unchanged reimport, reindex with stable frequencies, real ghost text and restart persistence with unchanged input files. Only the OS dialog return is controlled; real ingestion, SQL and prediction run in packaged Electron. Chromium sandboxing is enabled and all user data is isolated.
+- Initial three-file import, measured from UI click to completion: Windows **6,344.04 ms**, renderer interval maximum gap **74.60 ms** / 126 ticks, main-process peak RSS at that point **348.03 MiB**; Linux **4,495.98 ms**, renderer gap **50.30 ms** / 89 ticks, main-process peak **404.13 MiB**. These do not measure physical keyboard dispatch, total app memory or later reindex peaks.
+- Windows archive audit passed: SQLite `win32-x64.node` marked/physically unpacked and byte-identical, resource Apache license matches, and 10,411-byte bundled notices contain CodeMirror/MIT.
+
+The first Windows desktop run was 13/14 because the new measurement callback accidentally referenced imported Node `performance` inside a serialized renderer function. It failed before import; qualifying `window.performance` and aliasing the Node timer fixed only the test harness. The final full suites above passed on unchanged packaged binaries after that correction. No application defect was hidden or assertion skipped.
+
+### Delivered artifact and remaining limits
+
+At that stage the tested Windows app directory was retained separately at ignored `out/TypeNudge-win32-x64-large-import/`, preserving the existing normal build and user session. This temporary delivery is superseded by the normal-package follow-up below. A fresh native launch from the final location successfully imported a 512,000-byte / 102,400-word file through the real preload/IPC/import path with its own temporary profile, then closed and removed that profile. App archive SHA-256: `af4a4a3ecb1907419fc84ebab9b07db8642d16feaeb9a048f6bac26b7e1e9680`.
+
+Actual screenshots/metric attachments are under ignored `test-results/windows-large-import/` and `test-results/linux-large-import/`. Final source/config/test files were byte-compared against both verified fixtures. Temporary verification checkouts/caches and exploratory probe files were removed after checks; no real user corpus/profile was accessed. The diff/notice review keeps README diagrams/support, branding, legal notices and unrelated files intact. No commit, push, installer, signature or publication is part of this work.
+
+Indexing/reindexing and prediction queries remain synchronous in main; diverse large imports can occupy it for seconds, and the broad unique-word unigram query took around 192 ms. Renderer interval evidence does not guarantee main-process/window-action or physical typing responsiveness. Background indexing/performance redesign is outside this change. Hosted CI, other OS/architectures, original-file validation, physical IME and actual external-browser launching remain **Not run**. The existing small-corpus prediction benchmark was not repeated because its algorithm is unchanged.
+
+
+## TND-006 follow-up — Control characters and normal Windows package, 2026-10-18
+
+The user identified FF (form feed, U+000C) in an imported text and requested that similar characters be ignored without a new build for every character. They also requested that larger imports be part of the normal build, with no separate `large-import` variant, and confirmed saving/closing the running old variant before artifact replacement.
+
+### Import policy and checks
+
+- The UTF-8 decoded import copy maps FF/VT/NEL and Unicode LINE/PARAGRAPH SEPARATOR to LF. All other Unicode `Cc` controls (the complete C0/C1 ranges including NUL/DEL), except ordinary TAB/CR/LF, become spaces. Using separators avoids joining unrelated words; page/line boundaries reset N-gram contexts.
+- Unicode format marks, soft hyphens, zero-width/bidirectional marks, unusual spaces and symbols remain accepted. The existing word tokenizer excludes them from word tokens and treats them as separators; their stored text is preserved. No language-specific segmentation or blanket deletion of joiners was added.
+- Only the retained import copy is cleaned. Original selected files remain unchanged; content hashes and reindexing use the cleaned local body. Reimport of an equivalent cleaned body is unchanged. File/selection limits still count original bytes, preventing a batch-budget bypass when cleanup shrinks UTF-8 text. Fatal UTF-8 decoding, extension/path checks and all other resource bounds remain enforced. No schema/dependency/IPC or personal-editor behavior change was introduced.
+- Focused Windows typecheck passed. Storage checks passed **34/34**, including exhaustive C0/C1 handling, Unicode line/paragraph separators, ordinary whitespace preservation, 26 format/space/symbol examples, original-file immutability, stable reimport/reindex frequencies and raw batch limits. One interim assertion used in-memory N-gram field names instead of SQLite column names; correcting only that test expectation passed.
+- The actual packaged large-import test now includes **100 FF characters in its 512,000-byte / 102,400-word source**, asserting the cleaned body/hash/counts and no page-crossing N-grams, unchanged reimport, original-file immutability and restart persistence. Its other real inputs remain 250,000 unique words and a 5 MiB byte-boundary fixture.
+
+### Commands and environment
+
+Same native Windows x64 / Windows_NT 10.0.26100, Node 24.18.0 / npm 11.16.0, Electron 44.9.0 and better-sqlite3 13.0.3 environment as the preceding follow-up. Linux checks use Ubuntu 26.04 x64 under WSL2/WSLg with the same pinned runtimes and the previously documented temporary GUI-library path. Both clean verification checkouts are generated from HEAD with all changed/new source, scripts and tests overlaid; each uses its own dependencies, synthetic files and temporary app profiles.
+
+Commands: `npm ci --no-fund` (Windows fixture-local cache; Linux `ELECTRON_SKIP_BINARY_DOWNLOAD=1` with `--offline --cache /tmp/type-nudge-npm-cache`), `npm run typecheck`, `npm test`, `npm run package`, then `TYPENUDGE_EXECUTABLE` targeting that package and `npm run test:desktop`. Windows uses native `node.exe`/`npm-cli.js` through WSL interop; GUI suites run sequentially across OSes. Both clean installs added 183 packages / audited 184, reporting 0 vulnerabilities at that time. Both typechecks and complete unit/SQLite suites passed **206/206 in 11 files**.
+
+### Packaged results and delivered artifact
+
+| Check | Result |
+| --- | --- |
+| Actual Windows x64 package | Passed; final full suite **14/14 in 31.2 seconds**, large/control import case 18.4 seconds. |
+| Actual Linux x64/WSLg package | Passed; final full suite **14/14 in 25.3 seconds**, large/control import case 13.3 seconds. |
+| Windows three-file UI import | 6,132.58 ms; renderer interval maximum gap 63.70 ms / 122 ticks; main-process peak RSS at that point 350.64 MiB. |
+| Linux three-file UI import | 4,514.56 ms; renderer interval maximum gap 50.70 ms / 90 ticks; main-process peak RSS at that point 405.61 MiB. |
+| Windows native/license archive audit | SQLite Node-API binary is marked and physically unpacked, matching the installed prebuild; resource Apache license matches; bundled notices contain `@codemirror/` and MIT, 10,411 bytes. |
+| Normal-path native Windows smoke | Passed: fresh launch from `out/TypeNudge-win32-x64/type-nudge.exe`, real bridge/IPC/SQLite import of 102,406 words with 100 FFs plus NUL/C1/Unicode line/paragraph controls, exact cleaned text/hash/bytes, unchanged selected file, temporary profile removed after closing. |
+
+The initial full desktop runs on each OS were **8/14**. Linux unexpectedly copied `we write wox` instead of `we write wo`; Windows copied the whole page instead of the expected completed editor text, with unexpected `we write woke` in the page. These are observed input/focus discrepancies, with cause undetermined. After the first assertion failed, worker restarts created fresh profiles and five later editor checks lacked fixtures populated by earlier tests. The independent large/control import case passed in both initial runs. Failure traces are retained under ignored `test-results/linux-control-import-initial/` and `test-results/windows-control-import-initial/`. A fresh full run on each **unchanged package and unchanged test source** then passed 14/14; `--max-failures=1` was used only to stop further cascades if the anomaly repeated. No assertions were relaxed or skipped, and no application keyboard/focus change is claimed. An initial archive-audit probe searched for capitalized `CodeMirror`; the generated notices use `@codemirror/`, and correcting the probe passed without modifying the package.
+
+The final Windows package replaces the previous normal directory at ignored **`out/TypeNudge-win32-x64/`** and contains both larger imports and control-character cleanup. The superseded generated `out/TypeNudge-win32-x64-large-import/` variant is removed after the user saved/closed it and a process check confirmed no Windows TypeNudge was running. Existing user documents/profiles and the existing root Linux artifact are preserved; only temporary verification builds/profiles and superseded generated Windows directories are cleaned up. The Windows app archive SHA-256 is `0707526e91752bfdde79d2ad26e69ac76e0d399e80d959c506a83328b53f58e5`.
+
+Final screenshots are under ignored `test-results/windows-control-import/` and `test-results/linux-control-import/`. Changed/new runtime, script, configuration and test files were byte-compared against both verified checkouts before cleanup. Diff/notice checks preserve README Mermaid diagrams and its full license/support footer, branding, dependency versions and lockfile. No commit, push, installer, signature or publication was performed.
+
+The import benchmark was not repeated; the earlier measurements above describe its earlier revision. New packaged import observations cover this cleanup change, but interval/main-RSS samples are not total app memory, physical typing or worst-case latency guarantees. Main-process indexing remains synchronous. Original user-file validation, hosted CI, macOS/other architectures, physical IME and actual external-browser launching remain **Not run** in this follow-up.
+
+
+## TND-006 follow-up — Unavailable imported sources, 2026-10-18
+
+The user requested a per-source cleanup action only when the original file is unavailable and a stored index exists. This follow-up retains the preceding uncommitted larger-import/control-character fixes. No new release/story, global clear, automatic deletion, directory scan or background watcher was added.
+
+### Behavior and compatibility
+
+- Schema **3** adds main-only `imported_files(source_id, original_path)` with a cascading foreign key. Successful explicit import remembers its canonical path in the same transaction as the text/counts; unchanged explicit reimport also backfills the location without changing content/index revisions or counts. Migration preserves prior imported/personal text, counts and settings. Previous schema-2 executables refuse an upgraded database; no downgrade is attempted.
+- Old entries have unknown availability: only a path hash was retained previously, so their original paths cannot be reconstructed. Ordinary Delete remains available, and explicit reimport enables checks without guessing/scanning paths.
+- Opening Sources / **Check files** invokes a no-argument, trusted-frame IPC request. Only those remembered paths are probed asynchronously using stat plus read-only open/stat/close, without reading bodies. Each check returns unknown after 1.5 seconds if the filesystem has not replied. Missing file/parent and denied access are distinguished from other errors/timeouts; unknown does not authorize conditional cleanup. Ordinary metadata/prediction reads remain free of filesystem probes. Paths are never returned to the renderer.
+- A missing/unavailable source with actual N-gram rows shows **Clear index** in place of ordinary Delete. Empty/unindexed, available or unknown sources keep Delete. The UUID-only cleanup handler holds the existing mutation lock, rechecks availability/index existence, then transactionally deletes the source, stored body, all N=1/2/3 rows and location metadata, advancing index revision. Restored files refuse conditional cleanup and refresh the row. Other imports/personal documents remain intact; no original file/directory is deleted.
+- The Sources dialog now displays import limits from shared constants; its former hardcoded 1 MiB / 4 MiB copy was stale after the preceding larger-import change. Rows/buttons wrap in the existing small-window layout.
+
+### Verification
+
+Environments, pinned runtimes and commands match the preceding Windows/Linux follow-up: native Windows x64 / Node 24.18.0 / npm 11.16.0 and Ubuntu 26.04 x64 under WSL2/WSLg. Each clean isolated checkout uses HEAD plus all changed/new runtime, configuration, scripts and tests; no existing dependency installation or personal profile is replaced. Commands: `npm ci --no-fund` (Windows fixture-local cache; Linux `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --offline --cache /tmp/type-nudge-npm-cache --no-fund`), `npm run typecheck`, `npm test`, `npm run package`, then `TYPENUDGE_EXECUTABLE` pointing to that actual package and `npm run test:desktop -- --max-failures=1`. GUI suites run sequentially; sandboxing remains on.
+
+- Focused Windows checks: typecheck and **35/35** file-status, SQLite migration/cleanup, preload and source-IPC cases passed. Final read-only-open probing separately passed the 14 file-status/SQLite cases. An interim test typecheck assumed document summaries expose a source ID; the fixture now queries its real SQLite foreign key instead, without changing application behavior.
+- Clean installs: 183 packages added / 184 audited, 0 vulnerabilities reported on each OS at that time. Dependency versions and lockfile are unchanged.
+- Full typechecks and unit/real-SQLite suites: **225/225 in 13 files on each OS**. Coverage includes unknown/denied/timed-out checks, persistent canonical paths and path privacy, lossless schema-1/2 migration, unchanged-reimport backfill, restored-file refusal, empty-source refusal, directory replacement, scoped cascading cleanup, rollback and cached prediction invalidation while retaining other imported/personal counts.
+- Actual Linux x64/WSLg package: **15/15 desktop checks in 27.4 seconds**. The new independent availability test passed in 1.6 seconds.
+- Actual Windows x64 package: **15/15 desktop checks in 34.1 seconds**. The new independent availability test passed in 2.0 seconds. Both full suites passed on their first attempt in this follow-up; no assertions were skipped or relaxed.
+- The new UI case imports two nonempty sources and one empty source, deletes only its temporary originals, verifies conditional/absent Clear index buttons, rejects cleanup after restoration, checks unchanged SQL counts on refusal, then clears only the missing indexed source. Source/text/N-gram/path rows are all absent afterwards; other source counts and files survive restart. The actual 520 × 480 dialog has no horizontal overflow and its screenshot visibly shows the missing source and Clear index action.
+- Windows archive audit passed: unpacked native SQLite bytes match, Apache resource license matches, and 10,411-byte bundled notices retain `@codemirror/` / MIT. App archive SHA-256: `ed929fc896e50bf13ca2a48df0570782bc1054ecc280b717b559a89bf3ea8a4b`.
+
+After the user confirmed saving/closing TypeNudge and a process check found no Windows TypeNudge process, the tested app directory replaced normal **`out/TypeNudge-win32-x64/`**. The same availability test passed again from that final executable location with an isolated temporary profile, including real DB creation, import, restored-file refusal, scoped cleanup and restart. No real user corpus/profile was opened, migrated or cleared during verification. The existing root Linux artifact is preserved.
+
+Screenshots are retained under ignored `test-results/windows-source-availability/`, `test-results/linux-source-availability/` and `test-results/windows-source-availability-final/`. Runtime/configuration/HTML/CSS/test bytes were compared with both verified checkouts before cleanup. Temporary checkouts/caches/profiles and the superseded normal build backup were removed after final-location verification. README Mermaid/license/support footer, branding, legal notices and the dependency lockfile are preserved; final diff/notice checks passed. No commit, push, installer, signing or publication was performed.
+
+No core prediction/import benchmark was repeated: their algorithms and numeric bounds are unchanged from the preceding follow-up, and the packaged large/control-import regression remains part of both 15-test suites. No new latency/memory guarantee is claimed. Hosted CI, other OS/architectures, physical IME, real-file permission ACL manipulation and actual external-browser dispatch remain **Not run**. Denied-read permission paths are tested deterministically at the filesystem boundary; the real packaged tests exercise actual deletion/restoration.

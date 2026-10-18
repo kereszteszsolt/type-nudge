@@ -9,13 +9,16 @@ import { sourceChannels } from '../../src/shared/sources';
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>(),
-  dialog: vi.fn(), import: vi.fn(),
+  dialog: vi.fn(), import: vi.fn(), clear: vi.fn(),
 }));
 vi.mock('electron', () => ({
   ipcMain: { handle: (channel: string, handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => mocks.handlers.set(channel, handler) },
   dialog: { showOpenDialog: mocks.dialog },
 }));
 vi.mock('../../src/main/storage/import', () => ({ importSelectedFiles: mocks.import }));
+vi.mock('../../src/main/storage/source-files', () => ({
+  listSourceFiles: (sourceStore: SourceStore) => sourceStore.list(), clearUnavailableSource: mocks.clear,
+}));
 
 const id = '11111111-1111-4111-8111-111111111111';
 const entry = 'file:///app/renderer/index.html';
@@ -59,13 +62,13 @@ describe('source IPC boundary', () => {
     expect(mocks.import).toHaveBeenCalledExactlyOnceWith(['/explicitly/chosen.txt'], store);
   });
 
-  it.each([sourceChannels.list, sourceChannels.import])('rejects injected renderer paths or SQL on %s', (channel) => {
+  it.each([sourceChannels.list, sourceChannels.checkFiles, sourceChannels.import])('rejects injected renderer paths or SQL on %s', (channel) => {
     expect(() => call(channel, event, '/etc/passwd')).toThrow('no arguments');
     expect(mocks.dialog).not.toHaveBeenCalled();
     expect(mocks.import).not.toHaveBeenCalled();
   });
 
-  it.each([sourceChannels.reindex, sourceChannels.delete])('validates opaque IDs on %s', async (channel) => {
+  it.each([sourceChannels.reindex, sourceChannels.delete, sourceChannels.clearUnavailable])('validates opaque IDs on %s', async (channel) => {
     for (const args of [[], ['/etc/passwd'], ["'; DROP TABLE sources; --"], [{}], [null], [id, 'extra']]) {
       expect(() => call(channel, event, ...args)).toThrow('valid source ID');
     }
@@ -104,6 +107,18 @@ describe('source IPC boundary', () => {
     await expect(call(sourceChannels.list)).resolves.toMatchObject({ ok: true });
     cancel({ canceled: true, filePaths: [] });
     await pending;
+    await expect(call(sourceChannels.delete, event, id)).resolves.toMatchObject({ ok: true });
+  });
+
+  it('holds the mutation lock during the final file check and passes only a validated ID to cleanup', async () => {
+    let finish!: () => void;
+    mocks.clear.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
+    const pending = call(sourceChannels.clearUnavailable, event, id);
+    expect(mocks.clear).toHaveBeenCalledExactlyOnceWith(store, id);
+    await expect(call(sourceChannels.delete, event, id)).resolves.toMatchObject({ ok: false });
+    await expect(call(sourceChannels.checkFiles)).resolves.toMatchObject({ ok: true });
+    finish();
+    await expect(pending).resolves.toMatchObject({ ok: true });
     await expect(call(sourceChannels.delete, event, id)).resolves.toMatchObject({ ok: true });
   });
 });
