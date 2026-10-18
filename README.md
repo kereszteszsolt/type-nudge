@@ -11,6 +11,8 @@
 
 > **Repository status: TND-001–006 implemented; Release 0.1 verified locally on Linux x64/WSLg and Windows x64.** Available: the desktop editor, local text-source management, inline N=1/2/3 suggestions, persisted preferences and personal documents with opt-in save-time learning. **Use Save (Ctrl/Cmd+S) to persist text locally; unsaved changes stay in memory and have a discard guard.** CI checks are configured; hosted execution and other-platform delivery remain unverified. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
+**Planned follow-up:** [TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) specifies keyboard Help, hidden prediction settings, contiguous N=1–7, per-N top-X pools from the virtual combined model, merged-score final top-X sampling, multi-word previews and 500,000-word indexing within the current byte limits. These additions are not implemented in the current build. See the [complete planned pool mechanism](docs/prediction-pool.md).
+
 Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Use** enables a source for predictions, **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 5 MiB per file, 10 MiB per selection, 250,000 words per file, 128 characters per word, 100 stored sources and 32 MiB of stored text. File size and word count are independent: a 500 KiB file can contain more than the former 50,000-word allowance.
 
 **Sources → Check files** refreshes the availability of original imports; opening Sources also checks them. If an original is missing/unreadable and its stored index exists, **Clear index** removes that source, retained text and all N=1/2/3 counts from the database. It rechecks availability before clearing, and leaves other imports/personal notes intact. Readable files and imports without counts keep the normal **Delete** action. Old imports show unknown availability until explicitly reimported once: earlier databases retained only a path hash. No background folder scan or automatic deletion runs.
@@ -170,6 +172,7 @@ The [Checks workflow](.github/workflows/checks.yml) uses Node 24.18.0 on Ubuntu 
 | --- | --- | --- |
 | [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Implemented; locally verified | All six stories; Linux x64/WSLg and Windows x64 package checks, Linux development checks, CI configuration and measured performance |
 | [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–006 evidence | Real commands, hardware, timings and platform/CI limits |
+| [TND-007](docs/releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) | Planned | Help, hidden settings, N=1–7, per-N/final top-X score mixing, multi-word preview and 500k words |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For suggested GitHub metadata, see [About & Topics](docs/github-metadata.md).

@@ -13,6 +13,10 @@
 
 See [Release overview](releases/release-0.1-mvp/README.md) and [verification](releases/release-0.1-mvp/verification.md). All six stories are implemented, with local Linux x64/WSLg package/development checks, native Windows x64 package checks and measured indexing/prediction evidence. CI is configured; hosted execution, other native OS targets and installers/signing/publication remain unverified or unprovided.
 
+## Planned follow-up
+
+[TND-007 — Prediction controls, N=1–7 and multi-word suggestions](releases/release-0.1-mvp/stories/TND-007-prediction-controls-and-multiword-suggestions.md) is **Planned**, dependent on TND-001–006. It specifies a hidden settings panel and keyboard Help, mandatory lower N orders, per-N top-X pools from selected sources as a virtual combined model, followed by merged-score final top-X sampling, multi-word lookahead/partial acceptance and a 500,000-word limit with unchanged byte bounds. Implementation and its performance/package verification have not started.
+
 ## Later possibilities
 
-Only [future ideas](future.md) are recorded; no Release 0.2 or additional stories are committed. Do not implement them without a new request.
+Beyond the planned TND-007 above, only [future ideas](future.md) are recorded; no Release 0.2 or further stories are assigned. Do not implement those ideas without a new request.

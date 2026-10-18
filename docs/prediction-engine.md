@@ -4,6 +4,8 @@ TypeNudge uses **word-based** N-grams, not a large language model. It predicts a
 
 **TND-003 implements the main-process module.** `PredictionEngine` and its SQLite repository are tested independently of Electron UI. TND-004 connects them to typing through validated IPC, ghost text and persisted source/N controls; see [editor interactions](editor-interactions.md).
 
+**Planned TND-007:** the [complete pool mechanism](prediction-pool.md) describes per-N top-X aggregation, cross-order score merging, final top-X sampling and multi-word virtual context. This replaces the single-order stopping rule only after TND-007 is implemented; the interface and backoff behavior below describe the current executable.
+
 ## Core interface
 
 ```typescript

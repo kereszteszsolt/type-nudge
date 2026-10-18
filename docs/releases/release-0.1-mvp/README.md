@@ -2,6 +2,8 @@
 
 **Status:** Implemented and locally verified on **Linux x64/WSLg and Windows x64** · **6 stories implemented.** See [verification](verification.md) for commands, measurements and platform limits. Hosted GitHub Actions is Not run; installers, signing and publication are not provided.
 
+The original TND-001–006 MVP baseline is complete. [TND-007](stories/TND-007-prediction-controls-and-multiword-suggestions.md) is a **Planned follow-up** for Help/hidden settings, contiguous N=1–7, per-N top-X/merged-score final top-X sampling, multi-word previews and 500,000-word indexing. Its new behavior is not implemented or verified yet.
+
 ## Goal
 
 Build a minimal Electron/TypeScript desktop plain-text editor with opt-in local N-gram learning, editable active sources, N=1/2/3 fallback, ghost-text suggestions, local SQLite persistence, and tested Windows/Linux packaging where environments are available.
@@ -14,8 +16,9 @@ Build a minimal Electron/TypeScript desktop plain-text editor with opt-in local 
 4. [TND-004 — Inline Suggestions & Settings](stories/TND-004-inline-suggestions-and-settings.md)
 5. [TND-005 — Personal Writing & Learning](stories/TND-005-personal-writing-and-learning.md)
 6. [TND-006 — Testing, Packaging & Documentation](stories/TND-006-testing-packaging-and-documentation.md)
+7. [TND-007 — Prediction Controls & Multi-word Suggestions](stories/TND-007-prediction-controls-and-multiword-suggestions.md) — **Planned**
 
-## Release exit criteria
+## Original MVP exit criteria
 
 - Every acceptance criterion for TND-001–006 is satisfied or a blocker is explicitly recorded; no unchecked criterion is silently treated as complete.
 - No hidden online calls, global keyboard hooks or unapproved personal learning.

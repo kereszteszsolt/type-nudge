@@ -2,7 +2,7 @@
 
 ## Story format
 
-Six stories live in [Release 0.1](releases/release-0.1-mvp/README.md) and each has `Status`, `User story`, `Goal`, `Dependencies`, `Acceptance criteria` and `Out of scope`. Status transitions: **Planned → In progress → Implemented** only when evidence justifies them.
+The implemented TND-001–006 baseline and planned TND-007 follow-up live in [Release 0.1](releases/release-0.1-mvp/README.md). Each story has `Status`, `User story`, `Goal`, `Dependencies`, `Acceptance criteria` and `Out of scope`. Status transitions: **Planned → In progress → Implemented** only when evidence justifies them. Creating a planned follow-up does not change the baseline's verified behavior.
 
 ## Minimal approval and verification loop
 
