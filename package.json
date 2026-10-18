@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:desktop": "playwright test",
+    "benchmark:prediction": "node scripts/benchmark-prediction.mjs",
     "package": "electron-forge package"
   },
   "dependencies": {

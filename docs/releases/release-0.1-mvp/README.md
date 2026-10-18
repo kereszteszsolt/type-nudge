@@ -1,6 +1,6 @@
 # Release 0.1 — Offline Predictive Writing MVP
 
-**Status:** In progress · **6 stories** · **TND-001–002 Implemented; TND-003–006 remain Planned.** See [verification](verification.md) for current evidence and platform limits.
+**Status:** In progress · **6 stories** · **TND-001–003 Implemented; TND-004–006 remain Planned.** See [verification](verification.md) for current evidence and platform limits.
 
 ## Goal
 

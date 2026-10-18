@@ -1,6 +1,6 @@
 # Testing and evidence plan
 
-TND-001/002 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001–003 have focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
 
 ## Foundation checks
 
@@ -26,6 +26,18 @@ TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desk
 Use the actual output path for your OS/architecture; this example is not a cross-platform packaging claim. A development smoke can also run after `npm run dev` builds the app, while its local Vite server remains running.
 
 The TND-002 desktop flow stubs only the OS picker's return value; ingestion and SQLite are real. It imports valid and malformed synthetic files, repeats/updates an import, reindexes after removing the original, verifies one-source deletion, restarts Electron with the same temporary `userData`, and inspects the persisted DB. The packaged-executable run is required to catch missing native dependencies/unpacked files. The Node and Electron runtimes both opened the pinned native module; other OS/architectures remain unverified until actually run.
+
+## Prediction core checks (TND-003)
+
+```bash
+npm test -- tests/unit/prediction.test.ts tests/integration/prediction.test.ts
+npm run typecheck
+npm run benchmark:prediction
+```
+
+The 48 pure/unit cases cover all seven nonempty N selections, disabled/unusable-order skipping, longest-context backoff, input bounds, Unicode normalization, equivalent cache keys, LRU eviction, empty/failed queries, revision/source/settings changes and immutable results. The 22 real SQLite integration cases cover exact cross-source aggregation, binary ties/top-three uniqueness, multilingual/supplementary prefixes, apostrophes, completed-word exclusion, sentence/document boundaries, disabled/unselected sources at all orders, primary-key query plans, source mutation/cache invalidation, rollback and read-snapshot consistency. The full `npm test` also runs the import/IPC regression suites.
+
+The benchmark builds the actual core into ignored `.cache/prediction-benchmark/` and uses temporary DBs/synthetic text, never user data. It checks outputs and unchanged source metadata, then removes the temporary data. Desktop/packaging checks are not repeated for this main-process algorithm story; its new editor-facing path does not exist until TND-004. Earlier desktop evidence remains scoped to the story that produced it.
 
 ## Later release test plan
 

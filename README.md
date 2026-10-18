@@ -9,9 +9,9 @@
 
 **TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. The TND-001 foundation provides a plain-text CodeMirror editor. Later stories will suggest word completions and likely next words as subtle **ghost text** inside its own editor. Suggestions will come from a lightweight, local **unigram/bigram/trigram** model learned from text files and optionally from saved writing — **not** from an LLM or cloud API.
 
-> **Repository status: TND-001 editor and TND-002 SQLite/import implementation; Release 0.1 is in progress.** Available: a single-window editor, normal editing shortcuts, display branding/About, and local text-source management through restricted IPC. **Editor text is session-only and is discarded when the window closes.** Imported source copies and N=1/2/3 counts persist locally. Document saving, learning and predictions remain planned in TND-003–006. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
+> **Repository status: TND-001–003 implemented; Release 0.1 is in progress.** Available: the desktop editor, local text-source management and a main-process N=1/2/3 prediction module with Unicode prefix matching, source filtering and a bounded cache. **Predictions are not connected to the editor yet; ghost text/settings are TND-004 work. Editor text is session-only and is discarded when the window closes.** Imported source copies and counts persist locally. Document saving and learning remain planned. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
-Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text. Source activation/settings and suggestions arrive in later stories.
+Open **Sources → Import TXT / MD** to select UTF-8 files. The source list shows word counts and revisions; **Reindex** uses the stored copy and **Delete** removes that source's local text and counts. Reimporting the same selected file replaces changed content and leaves identical content unchanged. Limits: 10 files, 1 MiB per file, 4 MiB per selection, 50,000 words per file, 100 stored sources and 32 MiB of stored text. The controls for source activation and visible suggestions arrive in TND-004.
 
 ## Planned Release 0.1 — Offline Predictive Writing MVP
 
@@ -114,6 +114,7 @@ On Windows-mounted WSL checkouts, file notifications may miss edits. Restart `np
 ```bash
 npm test              # IPC/security and real SQLite integration tests
 npm run typecheck
+npm run benchmark:prediction # reproducible synthetic SQLite prediction benchmark
 npm run package       # builds the current platform's app directory under out/
 npm run test:desktop  # tests the built main/preload/renderer; run package first
 ```
@@ -124,8 +125,8 @@ Desktop tests require a working graphical session and use temporary user data. T
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001 editor and TND-002 source index; predictions, learning and release delivery remain planned |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001/002 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001–003 editor/index/prediction core; ghost text/settings, learning and release delivery remain planned |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001–003 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For GitHub metadata to apply **when the MVP is implemented**, see [About & Topics](docs/github-metadata.md).

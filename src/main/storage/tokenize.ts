@@ -3,6 +3,7 @@
 
 import { importLimits } from '../../shared/sources';
 import { SourceError } from './errors';
+import { normalizeWord } from '../text/words';
 
 export interface NgramCount {
   n: number;
@@ -23,7 +24,7 @@ export function countNgrams(text: string): { counts: NgramCount[]; tokenCount: n
         throw new SourceError(`A word exceeds the ${importLimits.wordCodePoints}-character limit.`);
       }
       if (++tokenCount > importLimits.tokens) throw new SourceError(`A file can contain at most ${importLimits.tokens.toLocaleString('en-US')} words.`);
-      const candidate = display.toLowerCase().replaceAll('’', "'").normalize('NFC');
+      const candidate = normalizeWord(display);
       for (let n = 1; n <= Math.min(3, context.length + 1); n++) {
         const key = n === 1 ? '' : JSON.stringify(context.slice(-(n - 1)));
         const identity = JSON.stringify([n, key, candidate]);

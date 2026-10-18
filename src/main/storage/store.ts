@@ -6,6 +6,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { importLimits, type SourceSummary } from '../../shared/sources';
 import { SourceError } from './errors';
 import { countNgrams } from './tokenize';
+import { SqlitePredictionRepository } from '../prediction/sqlite-repository';
+import type { PredictionRepository } from '../prediction/types';
 
 interface SourceRow {
   id: string; name: string; enabled: number; revision: number;
@@ -73,6 +75,10 @@ export class SourceStore {
     const rows = this.db.prepare(`SELECT ${summaryColumns} FROM sources WHERE kind = 'imported' ORDER BY created_at, id LIMIT ?`)
       .all(importLimits.sources) as SourceRow[];
     return rows.map((row) => ({ ...row, enabled: Boolean(row.enabled) }));
+  }
+
+  predictionRepository(): PredictionRepository {
+    return new SqlitePredictionRepository(this.db);
   }
 
   private summary(id: string): SourceSummary {

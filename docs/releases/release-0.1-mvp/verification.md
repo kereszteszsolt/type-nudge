@@ -2,13 +2,13 @@
 
 ## State
 
-**Release in progress.** TND-001–002 have implementation and real verification evidence below. TND-003–006 remain Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
+**Release in progress.** TND-001–003 have implementation and real verification evidence below. TND-004–006 remain Planned and Not run; this is not a completed MVP release. Each section records the state when that story was verified.
 
 | Story | Status | Source / unit checks | Desktop / packaging checks | Notes |
 | --- | --- | --- | --- | --- |
 | TND-001 | Implemented | 32 Vitest tests passed; typecheck passed | 5/5 desktop tests in each mode: development, production build, Linux x64 packaged executable (WSLg) | Foundation scope; see TND-002 for SQLite/import evidence; Windows/macOS Not run |
 | TND-002 | Implemented | 67 tests passed, including 22 real SQLite integration tests and 13 source IPC tests; typecheck passed | 6/6 desktop tests passed in development and on the actual Linux x64 packaged executable (WSLg) | SQLite 3.53.4 through better-sqlite3 13.0.3; native files unpacked; Windows/macOS Not run |
-| TND-003 | Planned | Not run | Not run | No prediction code or benchmarks yet |
+| TND-003 | Implemented | 137 tests passed (70 focused prediction cases); typecheck and synthetic benchmark passed | Not run for this core-only story | Source-filtered prefix/backoff/ranking and bounded cache; no editor/IPC integration yet |
 | TND-004 | Planned | Not run | Not run | No CodeMirror ghost extension yet |
 | TND-005 | Planned | Not run | Not run | No document save or personal learner yet |
 | TND-006 | Planned | Not run | Not run | No CI, release installers or delivery verification yet |
@@ -163,3 +163,64 @@ try {
 } finally {store.close();await rm(directory,{recursive:true,force:true});}
 JS
 ```
+
+## TND-003 — 2026-10-18
+
+Implementation approved by the user's request to implement TND-003. Starting point: clean `dev_r0.1` at TND-002 commit `872c516`. Separate approval to commit TND-003 after review was received on 2026-10-18; the evidence below was recorded before that commit. The active scope is the main-process prediction core, not the TND-004 editor/IPC/ghost-text path.
+
+### Environment and commands
+
+Ubuntu 26.04 LTS x64 under WSL2, kernel `6.6.87.2-microsoft-standard-WSL2`, Node 24.18.0 / npm 11.16.0. SQLite is the existing `better-sqlite3` 13.0.3 native module (SQLite 3.53.4); no dependencies or schema versions changed. The shared normalization refactor preserves the stored token/count format. Test/benchmark databases were temporary files under the OS temp directory and were removed afterwards.
+
+Commands from the repository used:
+
+```bash
+export PATH=/home/zsolti-wsl/.nvm/versions/node/v24.18.0/bin:$PATH
+npm test -- tests/unit/prediction.test.ts tests/integration/prediction.test.ts
+npm test
+npm run typecheck
+npm run benchmark:prediction
+git diff --check
+```
+
+| Check | Observed result |
+| --- | --- |
+| Focused prediction tests | Passed: 48 unit cases and 22 real SQLite integration cases, 70 total. |
+| Full `npm test` | Passed: 7 files, 137 tests, including the previous 67 import/IPC/storage tests. |
+| `npm run typecheck` | Passed for application code, all tests and the new TypeScript benchmark. |
+| `npm run benchmark:prediction` | Passed, with output/corpus invariants checked. Actual results below. The runner bundles into ignored `.cache/prediction-benchmark/` and measures the real core against on-disk SQLite. |
+| `git diff --check` | Passed; only source/config/focused documentation and tests are candidates for version control. |
+| Desktop / package / native OS targets | Not run for TND-003. No renderer/preload/IPC or native packaging configuration was changed. Earlier Electron/Linux package evidence belongs to TND-001/002. |
+
+The first focused test attempts uncovered two test-harness issues: a generic Vitest spy did not preserve the repository callback's TypeScript return type, and the SQL-plan spy initially saved its original method after patching it, causing recursion. The harness was corrected; the final focused and regression suites passed. No failed check remains outstanding.
+
+### What the tests prove
+
+All seven nonempty N selections, insufficient-context skipping, longest-context preference, enabled-only backoff and no lower-order slot filling are checked. A real fixture has a bigram match that is deliberately bypassed when N=2 is disabled. Every N filters both requested IDs and persisted enabled flags. Frequencies are aggregated across sources before limiting, including a shared word outside each source's individual top three that becomes the global winner. Output is unique, at most three, with deterministic binary ties and display spellings.
+
+Unicode checks cover Hungarian/Romanian accents, NFC decompositions, curly/straight apostrophes, expanding lowercase (`İ`) and supplementary Deseret letters. A fully typed word is not returned as an empty completion. Empty/unknown/disabled-only selections and empty corpora yield no candidates. Sentence, line and document boundaries remain unbridged in the existing counts; raw punctuation inside a completed context word is rejected.
+
+Cache checks exercise normalized equivalent requests, context/prefix/source/N differences, empty-result caching, frozen output, failed-query retry, least-recently-used eviction, explicit clearing, unchanged imports, replacement/reindex/delete invalidation, and source activation changes even without an incremented index revision. A real WAL concurrency test changes activation on a second connection after snapshot creation and proves the current request still sees one consistent snapshot. A failed transactional replacement leaves cached previous counts/revisions valid.
+
+`EXPLAIN QUERY PLAN` on the actual ranking statement confirmed a `SEARCH g USING PRIMARY KEY` with source/N/context equality and both candidate range bounds; no `SCAN g` was used. SQL returns `LIMIT 3`, source metadata is limited to 100 rows, and at most three enabled-order candidate queries execute. Exact aggregation still processes all matching indexed rows inside SQLite; this is not a constant-work or fixed-latency claim. Neither the full index nor stored source bodies enter the renderer.
+
+### Reproducible prediction measurements
+
+Run **`npm run benchmark:prediction`**. Environment reported by the runner: **AMD Ryzen 9 3900X 12-Core Processor**, Linux x64 / WSL2, **Node v24.18.0**. The two source bodies are synthetic `we write wordX.` sentences with a newline between sentences and `X = sentenceIndex % 500`. The small fixture has 100 sentences per source (600 tokens / 3,378 UTF-8 bytes total); the medium fixture has 5,000 per source (30,000 tokens / 177,798 bytes). There are two sources in each temporary DB, with at most 500 distinct `wordX` continuations; token count alone does not represent a high-vocabulary corpus.
+
+Each case records **100 LRU-cleared samples** and **1,000 warm-LRU samples**, using `performance.now()` around the complete `engine.predict()` call. Times include input normalization, source/revision read transaction, cache lookup, and (on misses) SQLite aggregation/backoff. They exclude Vite bundling, fixture creation/indexing, assertions, and all Electron IPC/UI/painting. SQLite/OS pages were not flushed: “LRU cleared” does **not** mean cold disk/startup. Warm calls still refresh metadata. Result invariants and unchanged source metadata are checked; only synthetic input is used.
+
+| Total tokens | Case | LRU cleared median / p95 (ms) | Warm LRU median / p95 (ms) |
+| --- | --- | --- | --- |
+| 600 | unigram | 0.1346 / 0.2452 | 0.0259 / 0.0600 |
+| 600 | prefix | 0.1252 / 0.2329 | 0.0246 / 0.0435 |
+| 600 | bigram | 0.1281 / 0.2421 | 0.0254 / 0.0361 |
+| 600 | trigram | 0.1258 / 0.1635 | 0.0253 / 0.0317 |
+| 600 | enabled-only backoff | 0.1354 / 0.1825 | 0.0251 / 0.0359 |
+| 30,000 | unigram | 0.4891 / 0.6172 | 0.0255 / 0.0475 |
+| 30,000 | prefix | 0.4792 / 0.5707 | 0.0241 / 0.0349 |
+| 30,000 | bigram | 0.4699 / 0.5512 | 0.0244 / 0.0379 |
+| 30,000 | trigram | 0.4746 / 0.5204 | 0.0252 / 0.0347 |
+| 30,000 | enabled-only backoff | 0.4786 / 0.5248 | 0.0250 / 0.0349 |
+
+Unigram uses no context/prefix; prefix uses `wo` and no context; bigram uses `['write']` + `wo`; trigram uses `['we','write']` + `wo`; backoff uses `['missing','write']` + `wo` with only N=1/3 enabled. Every fixture returned three expected candidates at the expected order. These are one local run's observations, not an end-to-end typing measurement, quality evaluation, worst-case corpus measurement or platform latency guarantee. Windows/macOS, editor/IME integration, source/settings controls, stale UI requests, personal learning and release delivery remain outside this story's proof.
