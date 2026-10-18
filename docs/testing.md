@@ -1,6 +1,29 @@
 # Testing and evidence plan
 
-All items below are **planned tests**, not completed verification. The only authoritative runtime evidence is in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+TND-001 has focused runnable tests. Later-story items below remain planned. The authoritative runtime evidence and platform limits are in [Release 0.1 verification](releases/release-0.1-mvp/verification.md).
+
+## Foundation checks
+
+```bash
+npm test
+npm run typecheck
+npm run package
+npm run test:desktop
+```
+
+Vitest checks IPC argument/sender validation, empty/unsafe brand links, the named preload surface, and development/production request policies. Desktop tests use the installed Electron binary with `chromiumSandbox: true`, an isolated temporary user-data directory, and a real graphical session. Build first using `package`; the smoke harness then loads `.vite/build/main.js` without Vite. Do not run packaging concurrently with `dev`, which rewrites that same build directory.
+
+The desktop suite checks startup, renderer Node isolation, isolated-world separation, sandbox evidence (Linux `/proc` seccomp/no-new-privileges; Electron process metrics on other systems), CSP, Unicode lines, selection, real clipboard copy/paste, undo/redo, Tab, About/Escape/focus restoration, named external-link dispatch, rejected URL injection, blocked remote fetch/popups, and a 520 × 480 window. It captures the actual editor under ignored `test-results/`. External browser launch is stubbed in the Electron main process so no support page is opened during automated checks. Native OS browser launching and physical IME composition require manual checks.
+
+To exercise a packaged app directory with the same suite on Linux:
+
+```bash
+TYPENUDGE_EXECUTABLE="$PWD/out/TypeNudge-linux-x64/type-nudge" npm run test:desktop
+```
+
+Use the actual output path for your OS/architecture; this example is not a cross-platform packaging claim. A development smoke can also run after `npm run dev` builds the app, while its local Vite server remains running.
+
+## Later release test plan
 
 | Scope | Planned approach | Story |
 | --- | --- | --- |

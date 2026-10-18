@@ -2,7 +2,7 @@
 
 ## Status and approved boundaries
 
-This is a **documentation-only** TypeNudge baseline. Release 0.1 (`TND-001`–`TND-006`) is **Planned**. No Electron app, CodeMirror plugin, SQLite schema, package manifest, CI workflow, binary or runnable test exists yet. Do not present planned behavior as implemented or verified.
+The original documentation-only baseline now includes the implemented **TND-001** foundation. Release 0.1 is **In progress**. The repository contains the Electron/CodeMirror editor foundation, manifest and focused tests; SQLite, predictions, learning, CI and release installers remain planned. Consult the active story and verification before presenting any behavior as implemented or verified.
 
 The agreed MVP is a **single Electron/TypeScript desktop app** with CodeMirror 6, local SQLite indexing, N=1/2/3 word predictions, prefix completion, inline ghost text, selectable text sources, save-time opt-in learning, and Electron Forge packaging. No external API, server backend, cloud model, account, global keyboard monitoring or shared writing history.
 
@@ -45,4 +45,4 @@ For TypeScript/JavaScript use `//`; for handwritten CSS use `/* ... */`; for han
 
 ## Scope control
 
-`docs/future.md` is an uncommitted idea list. Do not implement optional N-gram sizes beyond N=3, Trie/TST, cloud suggestions, rich document editing or global autocomplete unless separately approved. This repository deliberately has **no application source code** yet.
+`docs/future.md` is an uncommitted idea list. Do not implement optional N-gram sizes beyond N=3, Trie/TST, cloud suggestions, rich document editing or global autocomplete unless separately approved. Application code must remain within the approved active story.

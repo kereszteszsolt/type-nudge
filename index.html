@@ -1,0 +1,40 @@
+<!-- SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu> -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'nonce-typenudge-style'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">
+    <meta property="csp-nonce" nonce="typenudge-style">
+    <title>TypeNudge</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="identity"><span class="app-mark" aria-hidden="true">T<span>n</span></span><h1 id="app-name">TypeNudge</h1></div>
+        <button id="about-button" type="button" disabled>About</button>
+      </header>
+      <main>
+        <div class="document-heading"><h2 id="document-title">Untitled</h2><span>Plain text</span></div>
+        <div id="editor" aria-describedby="session-note"></div>
+      </main>
+      <footer class="status-bar">
+        <span id="session-note">Session only · Closing the window discards this text.</span>
+        <button id="support-button" class="text-button" type="button" hidden>Support</button>
+      </footer>
+    </div>
+    <dialog id="about-dialog" aria-labelledby="about-title">
+      <h2 id="about-title">About TypeNudge</h2>
+      <p id="app-version"></p>
+      <p>A quiet space for plain-text writing. Works offline.</p>
+      <p id="app-author"></p>
+      <p id="app-license"></p>
+      <nav id="about-links" aria-label="Project and support links"></nav>
+      <p id="link-error" role="status"></p>
+      <form method="dialog"><button autofocus>Close</button></form>
+    </dialog>
+    <p id="startup-error" role="alert" hidden>TypeNudge could not start. Close this window and try again.</p>
+    <script type="module" src="/src/renderer/index.ts"></script>
+  </body>
+</html>

@@ -3,13 +3,13 @@
 > **Write naturally. Get subtle, offline predictions as you type.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-D22128?style=flat-square)](LICENSE)
-![Status: Planned](https://img.shields.io/badge/status-planned-64748b?style=flat-square)
-![Electron](https://img.shields.io/badge/Electron-planned-47848F?style=flat-square)
+![Status: In development](https://img.shields.io/badge/status-in%20development-64748b?style=flat-square)
+![Electron](https://img.shields.io/badge/Electron-44.9.0-47848F?style=flat-square)
 ![Offline](https://img.shields.io/badge/offline-by%20design-244936?style=flat-square)
 
-**TypeNudge** is a planned, **fully offline predictive writing assistant** for ordinary text: notes, articles, messages and technical writing. It will suggest word completions and likely next words as subtle **ghost text** inside its own editor. Suggestions will come from a lightweight, local **unigram/bigram/trigram** model learned from text files and optionally from saved writing — **not** from an LLM or cloud API.
+**TypeNudge** is an **offline desktop writing app in development** for ordinary text: notes, articles, messages and technical writing. The TND-001 foundation provides a plain-text CodeMirror editor. Later stories will suggest word completions and likely next words as subtle **ghost text** inside its own editor. Suggestions will come from a lightweight, local **unigram/bigram/trigram** model learned from text files and optionally from saved writing — **not** from an LLM or cloud API.
 
-> **Repository status: documentation-only baseline.** Release 0.1 (`TND-001`–`TND-006`) is **Planned**. No Electron application, package manifest, SQLite schema, executable build, tests or distributable binary exists in this ZIP. Everything below describes the intended MVP, not tested features.
+> **Repository status: TND-001 foundation implemented; Release 0.1 is in progress.** Available: a single-window editor, normal editing shortcuts, display branding/About, and a restricted preload bridge. **Text is session-only and is discarded when the window closes.** Save, SQLite, imports, learning and predictions are still planned in TND-002–006. See [verification](docs/releases/release-0.1-mvp/verification.md) for actual checks and platform limits.
 
 ## Planned Release 0.1 — Offline Predictive Writing MVP
 
@@ -94,26 +94,36 @@ A **prefix match** completes a partially typed word; a **word N-gram** predicts 
 | Desktop smoke checks | Playwright Electron support or an equivalent reproducible Electron harness |
 | Delivery | GitHub Actions for focused checks; packaging on supported OS runners |
 
-Dependencies and versions will be pinned and checked for Electron/native module compatibility by **TND-001**. Electron Forge, SQLite and the CodeMirror integration **are not installed yet** in this documentation baseline. No backend server, Docker, React or LLM integration is planned.
+The foundation pins Electron **44.9.0**, TypeScript **7.0.2**, Vite **8.3.4**, Forge **8.0.1**, CodeMirror 6 packages, Vitest **5.0.5**, and Playwright **1.64.1** in `package.json` and `package-lock.json`. SQLite is not installed yet; its native ABI/build compatibility must be checked when introduced. [Forge's Vite integration](https://www.electronforge.io/config/plugins/vite) remains experimental upstream, so upgrades require desktop checks. No backend server, Docker, React or LLM integration is planned.
 
-## Local run (after implementation)
+## Local run
 
-During `TND-001` and `TND-006`, Codex will document **verified** commands, expected to resemble:
+Use **Node.js 24.x (24.18.0 or newer)** and npm in a desktop session. Install Linux GUI dependencies if your distribution lacks them (`libnss3`, `libnspr4`, `libasound2t64` on Ubuntu 26.04, plus GTK/GBM and their dependencies). An initial dependency/Electron download needs internet access; editor functionality does not.
 
 ```bash
 npm ci
 npm run dev
-npm run package
 ```
 
-**Do not run these in this baseline**: it intentionally contains no `package.json` or application source. Final commands, platform prerequisites, and native `better-sqlite3` packaging requirements must be confirmed by the implementing stories. Target platforms are **Windows and Linux** for the first verified release; macOS can be evaluated later.
+`npm start` is an alias for `npm run dev`. Vite serves only on `127.0.0.1:5173` during development; that port must be free. Keep the Chromium sandbox enabled. The built app loads local files and does not need Vite or a server.
+
+On Windows-mounted WSL checkouts, file notifications may miss edits. Restart `npm run dev` if the window keeps serving an older module; use a fresh `package` build for verification.
+
+```bash
+npm test              # focused IPC/preload/security tests
+npm run typecheck
+npm run package       # builds the current platform's app directory under out/
+npm run test:desktop  # tests the built main/preload/renderer; run package first
+```
+
+Desktop tests require a working graphical session and use temporary user data. To run the same checks against a packaged executable, set `TYPENUDGE_EXECUTABLE` to its absolute path (see [testing](docs/testing.md)). `package` produces an application directory, not an installer. Supported release packages, signing, native `better-sqlite3`, and CI remain TND-006 work. Windows and Linux remain target platforms; verified environments are listed separately in [release verification](docs/releases/release-0.1-mvp/verification.md).
 
 ## Development roadmap
 
 | Item | Status | Description |
 | --- | --- | --- |
-| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | Planned | Six scoped stories for the desktop application, indexing, predictions, learning, tests and packaging |
-| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | Not run | Real commands and observations will be recorded during implementation |
+| [Release 0.1 — MVP](docs/releases/release-0.1-mvp/README.md) | In progress | TND-001 editor foundation; indexing, predictions, learning and release delivery remain planned |
+| [Release 0.1 verification](docs/releases/release-0.1-mvp/verification.md) | TND-001 evidence | Real commands, environment and limitations; subsequent stories remain Not run |
 | [Future ideas](docs/future.md) | Ideas only | Optional later experiments; no committed release or acceptance criteria |
 
 See [Roadmap](docs/roadmap.md), [Testing](docs/testing.md) and [Repository baseline](docs/repository-baseline.md). For GitHub metadata to apply **when the MVP is implemented**, see [About & Topics](docs/github-metadata.md).

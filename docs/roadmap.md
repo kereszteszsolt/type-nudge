@@ -1,6 +1,6 @@
 # Development roadmap
 
-## Release 0.1 — Offline Predictive Writing MVP (Planned)
+## Release 0.1 — Offline Predictive Writing MVP (In progress)
 
 | Story | Short name | Dependency |
 | --- | --- | --- |
@@ -11,7 +11,7 @@
 | [TND-005](releases/release-0.1-mvp/stories/TND-005-personal-writing-and-learning.md) | Personal writing and learning | TND-002, TND-004 |
 | [TND-006](releases/release-0.1-mvp/stories/TND-006-testing-packaging-and-documentation.md) | Testing, packaging and release verification | TND-001–005 |
 
-See [Release overview](releases/release-0.1-mvp/README.md) and [verification](releases/release-0.1-mvp/verification.md). The release is **not implemented** in this baseline.
+See [Release overview](releases/release-0.1-mvp/README.md) and [verification](releases/release-0.1-mvp/verification.md). TND-001 provides the editor foundation; TND-002–006 remain Planned. The full release is not complete.
 
 ## Later possibilities
 

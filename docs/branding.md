@@ -19,6 +19,8 @@ The project uses a small, predictable **`brand/branding.json`** file and optiona
 
 Optional asset names may be empty. When provided, resolve only within the **packaged brand asset directory**, not arbitrary filesystem or remote URL input; document actual supported image formats when packaging is implemented. Do not show broken images for empty values.
 
-The version displayed to the user should come from **one real version source** (`package.json` when implemented), not duplicated manually in branding. No user-facing app is currently generated, so no runtime brand loading exists yet.
+The TND-001 main-process bundle reads this JSON at build time. App name, author and license are displayed as text; nonempty HTTPS project/author/support links are exposed to the UI as named actions. Main-process validation resolves those names back to the configured URLs. Empty or invalid links are hidden. The About version comes from Electron's `app.getVersion()`, backed by `package.json`, rather than a second branding version.
+
+TND-001 renders no optional images and uses the default Electron window icon; all current asset slots are empty. Loading/packaging nonempty optional image assets and verifying supported formats remains delivery work in TND-006. No remote branding assets are loaded.
 
 **Legal separation:** the full Apache-2.0 text stays in `LICENSE`, and new handwritten source uses the short two-line SPDX notice. Changing branding must never rewrite either. General JSON/metadata files do not get SPDX source headers.

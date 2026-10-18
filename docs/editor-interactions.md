@@ -1,4 +1,6 @@
-# Editor behavior — planned
+# Editor behavior
+
+**TND-001 available now:** plain-text CodeMirror editing, Unicode input, wrapping, selection, copy/paste, undo/redo, a keyboard-accessible About dialog, and normal Tab focus traversal. The editor has an accessible name and visible focus. Text remains in memory for the current session only; the footer explicitly explains that closing the window discards it. Save, import, predictions, settings and learning below remain planned.
 
 The MVP is a simple **plain-text** editor with CodeMirror 6. It is not a code IDE, rich-text document creator or global keyboard assistant.
 

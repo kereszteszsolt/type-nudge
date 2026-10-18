@@ -4,7 +4,10 @@ dist/
 build/
 out/
 .cache/
+.vite/
 coverage/
+test-results/
+playwright-report/
 *.log
 *.tsbuildinfo
 

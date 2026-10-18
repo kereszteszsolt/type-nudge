@@ -1,0 +1,50 @@
+/* SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu> */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #29362f;
+  background: #f6f5f1;
+  font-synthesis: none;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+button:disabled { cursor: default; }
+button:focus-visible { outline: 2px solid #315e49; outline-offset: 4px; }
+button:not(.text-button) {
+  border: 1px solid #d1d7cf;
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: #fff;
+  color: inherit;
+}
+button:hover { background: #edf1eb; }
+.text-button { border: 0; padding: 2px; color: #315e49; background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.app-shell { height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+.app-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid #e0e3db; }
+.identity { display: flex; align-items: center; gap: 12px; }
+.app-mark { font-family: Georgia, serif; font-size: 28px; font-weight: 700; color: #315e49; }
+.app-mark span { font-size: 20px; }
+h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+main { min-height: 0; width: min(100% - 64px, 820px); margin: 24px auto; display: flex; flex-direction: column; }
+.document-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 12px; }
+h2 { font-size: 16px; margin: 0; font-weight: 600; }
+.document-heading span { color: #626d64; font-size: 12px; }
+#editor { min-height: 0; flex: 1; background: #fff; border: 1px solid #dce1d7; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #29362f06; }
+.status-bar { display: flex; gap: 16px; justify-content: space-between; align-items: center; border-top: 1px solid #e0e3db; padding: 12px 28px; font-size: 12px; color: #626d64; }
+dialog { color: inherit; background: #fff; border: 1px solid #d1d7cf; border-radius: 12px; padding: 28px; width: min(440px, 90vw); box-shadow: 0 12px 60px #0002; }
+dialog::backdrop { background: #1c292b55; }
+dialog p { font-size: 14px; line-height: 1.5; }
+dialog nav { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 8px 0; font-size: 13px; }
+dialog form { text-align: right; margin-top: 20px; }
+#link-error { color: #9b302e; }
+#startup-error { position: fixed; bottom: 35px; left: 24px; right: 24px; background: #fff0ed; padding: 14px; border: 1px solid #bb5a4b; }
+
+@media (max-width: 600px) {
+  .app-header { padding: 14px 18px; }
+  main { width: calc(100% - 32px); margin: 16px auto; }
+  .status-bar { padding: 10px 18px; align-items: start; }
+}
