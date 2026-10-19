@@ -13,7 +13,7 @@
     <div class="app-shell">
       <header class="app-header">
         <div class="identity"><span class="app-mark" aria-hidden="true">T<span>n</span></span><h1 id="app-name">TypeNudge</h1></div>
-        <div class="header-actions"><button id="documents-button" type="button">Documents</button><button id="sources-button" type="button">Sources</button><button id="settings-button" type="button" aria-haspopup="dialog">Settings</button><button id="help-button" type="button" aria-label="Help and shortcuts" aria-haspopup="dialog">?</button><button id="about-button" type="button" disabled>About</button></div>
+        <div class="header-actions"><button id="documents-button" type="button">Documents</button><button id="sources-button" type="button">Sources</button><button id="settings-button" type="button" aria-haspopup="dialog">Settings</button><button id="help-button" type="button" aria-label="Help and shortcuts" aria-haspopup="dialog">?</button><button id="about-button" type="button" aria-haspopup="dialog" disabled>About</button></div>
       </header>
       <main>
         <div class="document-heading"><h2 id="document-title">Untitled</h2><span>Plain text</span></div>
@@ -127,15 +127,10 @@
       <ul id="sources-list" aria-label="Imported sources"></ul>
       <form method="dialog"><button>Close</button></form>
     </dialog>
-    <dialog id="about-dialog" aria-labelledby="about-title">
-      <h2 id="about-title">About TypeNudge</h2>
-      <p id="app-version"></p>
-      <p>A quiet space for plain-text writing. Works offline.</p>
-      <p id="app-author"></p>
-      <p id="app-license"></p>
-      <nav id="about-links" aria-label="Project and support links"></nav>
+    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title" aria-describedby="app-description">
+      <div class="about-heading"><h2 id="about-title">About TypeNudge</h2><button class="about-close" type="button" aria-label="Close about" autofocus>×</button></div>
+      <div id="about-content"></div>
       <p id="link-error" role="status"></p>
-      <form method="dialog"><button autofocus>Close</button></form>
     </dialog>
     <p id="startup-error" role="alert" hidden>TypeNudge could not start. Close this window and try again.</p>
     <script type="module" src="/src/renderer/index.ts"></script>

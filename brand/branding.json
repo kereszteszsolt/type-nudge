@@ -1,14 +1,17 @@
 {
   "appName": "TypeNudge",
+  "appTagline": "Write naturally. Get subtle, offline predictions as you type.",
+  "appDescription": "An offline plain-text desktop editor",
   "appWebsite": "",
   "appGithubUrl": "https://github.com/kereszteszsolt/type-nudge",
+  "appFavicon": "",
+  "appIcon": "",
+  "appPoster": "",
   "authorName": "Keresztes Zsolt",
   "authorWebsite": "https://kereszteszsolt.hu",
+  "authorWebsiteLanguages": ["hu", "en", "ro", "de"],
   "authorGithub": "https://github.com/kereszteszsolt",
   "authorWaysToSupportUrl": "https://kereszteszsolt.hu/ways-to-support",
   "authorBuyMeACoffeeUrl": "https://buymeacoffee.com/kereszteszsolt",
-  "license": "Apache-2.0",
-  "appFavicon": "",
-  "appIcon": "",
-  "appPoster": ""
+  "supportRemarkText": "Support is voluntary and does not create any obligation, priority service, special access or other consideration. Thank you for your attention, and also if you support my work in any way!"
 }

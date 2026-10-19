@@ -4,7 +4,7 @@
 import { app, BrowserWindow, Menu, session, dialog } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import branding from '../../brand/branding.json';
+import appMetadata from '../../brand/branding.json';
 import { registerAppIpc } from './ipc';
 import { allowRequest, localDevEntry } from './security';
 import { registerSourcesIpc } from './sources-ipc';
@@ -13,7 +13,7 @@ import type { StoreAccess } from './storage/access';
 import { registerPredictionIpc } from './prediction-ipc';
 import { registerDocumentsIpc } from './documents-ipc';
 
-app.setName(branding.appName);
+app.setName(appMetadata.appName);
 app.enableSandbox();
 app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('disable-component-update');
@@ -31,7 +31,7 @@ const entry = MAIN_WINDOW_VITE_DEV_SERVER_URL
 
 function createWindow(): void {
   window = new BrowserWindow({
-    title: branding.appName,
+    title: appMetadata.appName,
     width: 1040,
     height: 780,
     minWidth: 480,
@@ -76,7 +76,7 @@ void app.whenReady().then(() => {
     callback({ cancel: !allowRequest(details.url, entry) });
   });
   session.defaultSession.on('will-download', (event) => event.preventDefault());
-  registerAppIpc(() => window, entry, branding, app.getVersion());
+  registerAppIpc(() => window, entry, appMetadata, app.getVersion());
   registerSourcesIpc(() => window, entry, getStore);
   registerPredictionIpc(() => window, entry, getStore);
   registerDocumentsIpc(() => window, entry, getStore);

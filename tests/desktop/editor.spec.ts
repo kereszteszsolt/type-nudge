@@ -139,7 +139,9 @@ test('Tab leaves the editor; About works with the keyboard and displays package 
   await expect(dialog).toContainText(`Version ${metadata.version}`);
   await expect(dialog).toContainText('Keresztes Zsolt');
   await expect(dialog.getByRole('button', { name: 'Ways to support', exact: true })).toBeVisible();
-  await expect(page.locator('.status-bar button')).toHaveCount(0);
+  await expect(page.locator('.status-bar .license-link')).toHaveText('Apache-2.0');
+  await expect(page.locator('.status-bar .author-website')).toHaveText('kereszteszsolt.hu');
+  await expect(page.locator('.status-bar').getByRole('button', { name: 'Ways to support', exact: true })).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('about-support.png') });
   await expect(dialog.getByRole('button', { name: 'Project website', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -155,7 +157,9 @@ test('external links need a click, use the allowlist and never navigate this win
     };
   });
   const original = page.url();
-  await expect(page.locator('.status-bar button')).toHaveCount(0);
+  await expect(page.locator('.status-bar .license-link')).toHaveText('Apache-2.0');
+  await expect(page.locator('.status-bar .author-website')).toHaveText('kereszteszsolt.hu');
+  await expect(page.locator('.status-bar').getByRole('button', { name: 'Ways to support', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'About', exact: true }).click();
   expect(await application.evaluate(() => (globalThis as unknown as { openedLinks: string[] }).openedLinks)).toEqual([]);
   await page.getByRole('dialog', { name: 'About TypeNudge' }).getByRole('button', { name: 'Ways to support', exact: true }).click();

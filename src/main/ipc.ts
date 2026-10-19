@@ -9,20 +9,23 @@ import { assertTrustedSender } from './ipc-sender';
 export function registerAppIpc(
   getWindow: () => BrowserWindow | null,
   entry: string,
-  branding: Record<string, string>,
+  appMetadata: Partial<Record<LinkId | 'appName' | 'authorName', string>>,
   version: string,
 ): void {
   const links = new Map<LinkId, string>();
   for (const id of Object.keys(linkLabels) as LinkId[]) {
-    const url = safeExternalUrl(branding[id] ?? '');
+    const url = safeExternalUrl(appMetadata[id] ?? '');
     if (url) links.set(id, url);
   }
 
+  // The legal destination is fixed by the application, never by display metadata.
+  links.set('license', 'https://www.apache.org/licenses/LICENSE-2.0');
+
   const info: AppInfo = {
-    name: branding.appName ?? 'TypeNudge',
+    name: appMetadata.appName ?? 'TypeNudge',
     version,
-    author: branding.authorName ?? '',
-    license: branding.license ?? '',
+    author: appMetadata.authorName ?? '',
+    license: 'Apache-2.0',
     links: [...links.keys()].map((id) => ({ id, label: linkLabels[id] })),
   };
 

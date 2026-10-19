@@ -17,6 +17,7 @@ export const linkLabels = {
   authorGithub: 'Author on GitHub',
   authorWaysToSupportUrl: 'Ways to support',
   authorBuyMeACoffeeUrl: 'Buy me a coffee',
+  license: 'Apache-2.0',
 } as const;
 
 export type LinkId = keyof typeof linkLabels;

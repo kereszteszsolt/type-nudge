@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
-  build: { license: { fileName: 'third-party-licenses.md' } },
+  build: { assetsInlineLimit: 0, license: { fileName: 'third-party-licenses.md' } },
   server: { host: '127.0.0.1', port: 5173, strictPort: true },
   plugins: [{
     name: 'local-development-csp',

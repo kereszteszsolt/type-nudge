@@ -66,7 +66,7 @@ flowchart TB
 
 The Electron renderer has **no Node.js or arbitrary filesystem access**. The main process coordinates a single local worker that owns SQLite and user-approved file operations. Local app and prediction data are stored under Electron's OS-specific `userData` directory, not in the repository.
 
-[Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Branding](docs/branding.md).
+[Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [App configuration](docs/app-configuration.md).
 
 ## Prediction and learning flow
 

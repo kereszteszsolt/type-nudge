@@ -23,8 +23,8 @@ const frame = { url: entry };
 const contents = { mainFrame: frame };
 const current = { isDestroyed: () => false, webContents: contents } as unknown as BrowserWindow;
 const trusted = { sender: contents, senderFrame: frame } as unknown as IpcMainInvokeEvent;
-const branding = {
-  appName: 'Test editor', authorName: 'Display author', license: 'Apache-2.0',
+const appMetadata = {
+  appName: 'Test editor', authorName: 'Display author',
   appWebsite: '', appGithubUrl: 'https://github.com/example/editor',
   authorWebsite: 'javascript:alert(1)', authorWaysToSupportUrl: 'https://example.com/support',
 };
@@ -36,15 +36,15 @@ function call(channel: string, event: IpcMainInvokeEvent, ...args: unknown[]): u
 beforeEach(() => {
   mocks.handlers.clear();
   mocks.openExternal.mockClear();
-  registerAppIpc(() => current, entry, branding, '0.1.0-test');
+  registerAppIpc(() => current, entry, appMetadata, '0.1.0-test');
 });
 
 describe('minimal privileged IPC', () => {
   it('registers only app info and named external links; returns display metadata and package version', () => {
     expect([...mocks.handlers.keys()]).toEqual([channels.appInfo, channels.openLink]);
     const result = call(channels.appInfo, trusted) as AppInfo;
-    expect(result).toMatchObject({ name: 'Test editor', author: 'Display author', version: '0.1.0-test' });
-    expect(result.links.map((link) => link.id)).toEqual(['appGithubUrl', 'authorWaysToSupportUrl']);
+    expect(result).toMatchObject({ name: 'Test editor', author: 'Display author', version: '0.1.0-test', license: 'Apache-2.0' });
+    expect(result.links.map((link) => link.id)).toEqual(['appGithubUrl', 'authorWaysToSupportUrl', 'license']);
     expect(result).not.toHaveProperty('appIcon');
   });
 
@@ -76,6 +76,12 @@ describe('minimal privileged IPC', () => {
     expect(mocks.openExternal).not.toHaveBeenCalled();
   });
 
+  it('keeps the license destination fixed when display metadata contains another URL', async () => {
+    registerAppIpc(() => current, entry, { ...appMetadata, license: 'https://example.com/wrong' }, '0.1.0');
+    await call(channels.openLink, trusted, 'license');
+    expect(mocks.openExternal).toHaveBeenCalledWith('https://www.apache.org/licenses/LICENSE-2.0');
+  });
+
   it('rejects the main frame after it navigates away', () => {
     frame.url = 'https://example.com';
     try {
@@ -86,7 +92,7 @@ describe('minimal privileged IPC', () => {
   });
 
   it('rejects a closed window', () => {
-    registerAppIpc(() => null, entry, branding, '0.1.0');
+    registerAppIpc(() => null, entry, appMetadata, '0.1.0');
     expect(() => call(channels.appInfo, trusted)).toThrow('Untrusted IPC sender');
   });
 });

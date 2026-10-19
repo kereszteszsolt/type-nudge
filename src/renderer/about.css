@@ -1,0 +1,40 @@
+/* SPDX-FileCopyrightText: 2026 Keresztes Zsolt <https://kereszteszsolt.hu>
+ * SPDX-License-Identifier: Apache-2.0 */
+
+:root { --about-surface: #fff; --about-text: #29362f; --about-muted: #626d64; --about-accent: #315e49; --about-soft: #edf1eb; --about-border: #d1d7cf; }
+
+.about-dialog { box-sizing: border-box; width: min(42rem, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 24px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--about-border); border-radius: 24px; color: var(--about-text); background: var(--about-surface); box-shadow: 0 24px 70px #0004; font-family: inherit; }
+.about-dialog::backdrop { background: #18252380; backdrop-filter: blur(3px); }
+.about-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.about-heading h2 { margin: 0; color: inherit; font-size: 1rem; line-height: 1.5; }
+.about-dialog .about-close { flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--about-border); border-radius: 50%; background: var(--about-soft); color: var(--about-text); font: inherit; font-size: 24px; cursor: pointer; }
+.about-poster { display: block; width: 100%; height: auto; border-radius: 18px; }
+.about-description, .about-version, .about-details { margin: 18px 0; text-align: center; color: var(--about-muted); font-size: .875rem; line-height: 1.7; }
+.about-version { margin: 8px 0; font-size: .75rem; }
+.about-dialog .about-links { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; }
+.about-dialog .about-support-links { margin-top: 10px; }
+.about-dialog .about-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 12px; border: 1px solid var(--about-border); border-radius: 8px; color: var(--about-accent); background: var(--about-soft); font: inherit; font-size: .8rem; line-height: 1.5; font-weight: 600; text-decoration: none; cursor: pointer; }
+.about-link > svg, .about-support-note > svg { flex: none; }
+.about-dialog .about-link:hover { border-color: var(--about-accent); }
+.about-dialog .coffee-link { background: #f6cc64; border-color: #d6a735; color: #3e3014; }
+.about-dialog :is(a, button):focus-visible, .author-attribution :is(a, button):focus-visible { outline: 2px solid var(--about-accent); outline-offset: 3px; }
+.link-tooltip { display: none; position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 3; box-sizing: border-box; width: max-content; max-width: min(36rem, 100%); padding: 10px 12px; border-radius: 8px; color: var(--about-surface); background: var(--about-text); box-shadow: 0 4px 20px #0003; font-size: .75rem; line-height: 1.6; font-weight: 400; text-align: left; overflow-wrap: anywhere; pointer-events: none; }
+.link-tooltip::after { content: ''; position: absolute; bottom: -7px; left: var(--tooltip-arrow, 20px); transform: translateX(-50%); border-top: 8px solid var(--about-text); border-inline: 8px solid transparent; }
+.link-tooltip > span { display: block; }
+.tooltip-url { margin-top: 3px; font-weight: 600; }
+.about-link:hover .link-tooltip, .about-link:focus .link-tooltip { display: block; }
+.about-support-note { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--about-border); color: var(--about-muted); font-size: .75rem; line-height: 1.7; }
+.about-support-note p { margin: 0; font-size: inherit; line-height: inherit; }
+.author-attribution { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--about-muted); font-size: .75rem; line-height: 1.6; overflow-wrap: anywhere; }
+.author-attribution :is(a, button) { padding: 0; border: 0; background: transparent; color: var(--about-accent); font: inherit; text-decoration: none; text-underline-offset: 3px; cursor: pointer; }
+.author-attribution :is(a, button):hover, .author-attribution .author-website { text-decoration: underline; }
+.about-dialog .author-attribution { margin-top: 20px; text-align: center; }
+.about-details a { color: var(--about-accent); text-underline-offset: 3px; }
+.app-footer { padding: 20px 16px; border-top: 1px solid var(--about-border); }
+@media (max-width: 480px) { .about-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 16px; border-radius: 18px; } .about-heading { margin-bottom: 16px; } }
+
+.about-intro { padding: 28px 20px; background: var(--about-soft); border-radius: 18px; text-align: center; }
+.about-intro strong { display: block; font-size: 2rem; color: var(--about-accent); }
+.about-intro p { margin-bottom: 0; }
+.status-bar .author-attribution { flex-shrink: 0; align-items: flex-end; font-size: 11px; }
+@media (max-width: 600px) { .status-bar { flex-wrap: wrap; } .status-bar .author-attribution { align-items: flex-start; } }
